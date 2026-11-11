@@ -17,7 +17,7 @@ description: >-
   counts, make figures. Pairs with `edna-agent`
   (upstream: produces the count tables) and `idtaxa-training` (sibling: produces
   the model used to generate classifications).
-version: 1.3.2
+version: 1.3.3
 updated: "2026-11-11"
 triggers:
   - "make eDNA figures"

@@ -1,7 +1,7 @@
 ---
 name: edna-run
 description: "Execute the correct eDNA metabarcoding stage(s) for the run's marker preset — agent-driven: the agent constructs the stage's tool commands from the canonical recipe table, shows them to the scientist, executes them under the per-stage pixi environments, and updates pipeline_state.json only after verified success. Stages: qc (cutadapt + FastQC), denoise (NGmerge + VSEARCH UNOISE3 + decontam + negative-control filter, with an alternative DADA2 paired-end error-model path via params `denoiser`), classify (DECIPHER IDTAXA + confidence filter + agglomeration + optional geocuration), diversity (mafft + FastTree + alpha + beta/PERMANOVA + community typing), association (differential abundance + correlations). Refuses to execute when the upstream preflight/edna-intake verdict is NO-GO. Has 6 explicit ask-user stop points (SP1–SP6). Triggers: 'run eDNA pipeline', 'execute eDNA stages', 'continue eDNA run', 'eDNA QC stage', 'eDNA denoise', 'eDNA classify', 'eDNA diversity', 'eDNA association'."
-version: 1.3.2
+version: 1.3.3
 updated: "2026-11-11"
 triggers:
   - "run eDNA pipeline"
@@ -16,6 +16,8 @@ triggers:
 
 # edna-run
 
+> **v1.3.3.** Third SP5 classification option: **dada2-nb** — Wang-style k-mer naive-Bayes via `dada2::assignTaxonomy` (`bin/assign_taxonomy_dada2.R`; runs under ENV[denoise], reuses the consensus-BLAST reference inputs and idtaxa-style output contract), closing the TBCG2026 manual's third named annotation route (BLAST / VSEARCH / trained Naive Bayes). Plus an OPTIONAL **classification comparison mode** (`classification_comparison: true`, SP5): non-primary methods run into `taxonomy_alternatives/` and `bin/compare_classifications.R` quantifies rank-level pairwise agreement + per-ASV concordance. Rule carried over from the Maaslin2/ANCOM-BC precedent: the canonical taxonomy stays the PRIMARY method's — comparison side by side, never merged.
+>
 > **v1.3.2.** New **alternative DENOISE path**: DADA2 paired-end error model (`bin/denoise_dada2.R`, `bioconductor-dada2` in env/denoise) selected via params `denoiser: "dada2"` (default `"unoise3"`, new stop point SP6). Mirrors QIIME2 `dada2 denoise-paired`; emits the same feature-table/rep-seqs contract so decontam/classify run unchanged. Motivation: close the last structural divergence from QIIME2-based course workflows (TBCG2026) and enable direct A/B engine comparisons for the F10/F16 marker-sanity question.
 >
 > **v1.2.0.** Agent-driven only. The `nextflow run` command-construction steps were replaced by the canonical **stage recipe tables** below: each recipe is the exact tool invocation validated on real data (2026-08-19 NF 24 + 2026-10-07 agent-driven rounds). Marker preset + run params are merged into ONE JSON at intake; recipes read merged parameters directly. New signature-library entries from the round-2 battle-test: missing env dependencies (NGmerge), mia↔rbiom pin, empty `--num_clusters`, rank case sensitivity, kingdoms vs mitochondrial superkingdom.
@@ -88,7 +90,8 @@ A stage command exits non-zero → Ask: "`<stage>` failed with `<excerpt>`. Pick
 
 | Trigger | Evidence check | Action |
 | --- | --- | --- |
-| No `idtaxa_model` resolved for this run, or the scientist wants a reference-database route instead of a trained classifier | `params.json.idtaxa_model` empty/unresolvable, or user names a reference FASTA + taxonomy TSV | Ask: "(A) **Train an IDTAXA model first** via `idtaxa-training/` (recommended when a curated reference like Mitohelper/SILVA is available — higher specificity); (B) **consensus-BLAST path** — classify against the supplied reference with vsearch + majority-vote (no model needed, mirrors QIIME2 classify-consensus-blast); (C) abort". Default to (B) when a model is absent and a labelled reference FASTA + taxonomy TSV exist, and record the choice in `pipeline_state.json.params_used.classification_method`. |
+| No `idtaxa_model` resolved for this run, or the scientist wants a reference-database route instead of a trained classifier | `params.json.idtaxa_model` empty/unresolvable, or user names a reference FASTA + taxonomy TSV | Ask: "(A) **Train an IDTAXA model first** via `idtaxa-training/` (recommended when a curated reference like Mitohelper/SILVA is available — higher specificity); (B) **consensus-BLAST path** — classify against the supplied reference with vsearch + majority-vote (no model needed, mirrors QIIME2 classify-consensus-blast); (C) **dada2-nb path** — Wang-style k-mer naive-Bayes via `dada2::assignTaxonomy` against the labelled reference (no model needed, closes the manual's third annotation route); (D) abort". Default to (B) when a model is absent and a labelled reference FASTA + taxonomy TSV exist, and record the choice in `pipeline_state.json.params_used.classification_method`. |
+| The scientist wants annotation-method robustness evidence for the interpret report | `params.json.classification_comparison: true`, or user asks "which classifier should I trust / do they agree" | Run the PRIMARY method through the canonical chain (its outputs are the canonical files), then additionally run each OTHER available method into `taxonomy_alternatives/<method>/` via its recipe (same query set, same references — each needs only its own prerequisites, e.g. dada2-nb needs no model; consensus-blast needs no model), and finish with `bin/compare_classifications.R`. **Never merge methods into one taxonomy table** — same rule as Maaslin2 vs ANCOM-BC: side by side, never averaged. Divergence between methods is a marker-sanity/reference-quality WARN signal; agreement raises annotation confidence. |
 
 Auto-pick (B) when `params.json.classification_method == "consensus-blast"` was set at intake; auto-pick (A)-route when the model exists and the param is unset or `"idtaxa"`.
 
@@ -279,6 +282,55 @@ ENV[classification] Rscript bin/consensus_blast_taxonomy.R \
 
 Notes: (1) `reference_taxonomy` accepts either RDP rank-coded lineages (`k__..;p__..;` — the QIIME2 `FeatureData[Taxonomy]` export format) or ID + per-rank columns; (2) an empty `blast6out` is the reference-coverage/marker-sanity failure mode — route back to the marker-sanity check, don't retry blindly.
 
+#### Alternative classify path — dada2-nb (Wang-style k-mer naive Bayes, no IDTAXA model needed)
+
+Fires when SP5 resolves to `dada2-nb` (params `classification_method: "dada2-nb"`) or the scientist names the naive-Bayes route (the TBCG2026 manual's third annotation option). Mirrors QIIME2 `classify-sklearn` semantics — per-rank bootstrap confidences. Implemented with `dada2::assignTaxonomy` (`bin/assign_taxonomy_dada2.R`), so it runs under ENV[denoise] (dada2 ships there since v1.3.2) and reads the SAME reference inputs as the consensus-BLAST path, emitting the SAME idtaxa-style filenames — the confidence filter/agglomerate chain runs unchanged. Keep the filter threshold moderate (bootstrap percents on the IDTAXA scale):
+
+```bash
+sed 's/;size=[0-9]*//' asv_table/filtered_rep_seqs.fna > taxonomy/rep_seqs_clean.fna
+
+# OPTIONAL but recommended (F10 lesson family): trim the reference in-silico to the
+# marker's primer span so training lengths resemble the queries — full-gene refs
+# (e.g. the Mitohelper 12S export, ~950 bp vs MiFish ~90-230 bp queries) still work
+# but with reduced per-rank resolution. cutadapt keeps the trimmed insert:
+ENV[qc] cutadapt --error-rate 0.1 --times 1 --overlap 12 -j ${N_CPU} \
+  -g ${P.primers_fwd} -a ${P.primers_rev} \
+  -o taxonomy/reference_amplicons.fna ${P.reference_fasta}
+
+ENV[denoise] Rscript bin/assign_taxonomy_dada2.R \
+  --query_seqs taxonomy/rep_seqs_clean.fna \
+  --reference_fasta taxonomy/reference_amplicons.fna \
+  --reference_taxonomy ${P.reference_taxonomy} \
+  --output_classification taxonomy/idtaxa_classification.tsv \
+  --output_confidence taxonomy/idtaxa_confidence.tsv --min_boot 0 --cpu 0
+
+# then run the SAME confidence-filter + agglomerate + seqtk chain as the IDTAXA path above
+# (e.g. ENV[decontam] julia bin/filter_idtaxa_by_confidence.jl ... --threshold 80)
+```
+
+Notes: (1) `--min_boot 0` is the default so ALL per-rank bootstrap values reach the confidence file and the threshold lives with `filter_idtaxa_by_confidence.jl` (keeps the three methods comparable through the same filter); (2) if in-silico trimming drops most references (primers absent from the reference amplicon), fall back to the untrimmed `${P.reference_fasta}` and record the length-regime caveat in the run report; (3) rank depth non-uniformity in reference lineages is tolerated (shallower lineages truncate) — a loud warning fires;
+(4) ASVs left with empty lineage depth get `NA` — they flow into the unassigned rate.
+
+#### Optional comparison mode — run several annotation methods side by side
+
+Fires when SP5's comparison row triggers (`classification_comparison: true` in params, or the scientist asks for it). The PRIMARY method's canonical outputs are the ones downstream consumes; alternatives land in `taxonomy_alternatives/` and a comparison TSV quantifies agreement:
+
+```bash
+mkdir -p taxonomy_alternatives
+# for each non-primary method M with its prerequisites satisfied (see its recipe above):
+#   run it against the SAME rep_seqs_clean.fna + same references, with --output_*
+#   under taxonomy_alternatives/M/, applying ITS own confidence filter there
+
+ENV[classification] Rscript bin/compare_classifications.R \
+  --classifications primary=taxonomy/idtaxa_classification_confident.tsv \
+    consensus-blast=taxonomy_alternatives/consensus-blast/confident.tsv \
+    dada2-nb=taxonomy_alternatives/dada2-nb/confident.tsv \
+  --output_agreement taxonomy_alternatives/method_agreement.tsv \
+  --output_concordance taxonomy_alternatives/method_concordance.tsv
+```
+
+Notes: (1) agreement_pct_of_both is the headline number per rank — ≥90% between two strong methods is normal, large divergence with both methods otherwise healthy is an F10-family WARN; (2) `concordant` in the concordance file marks ASVs where every method that assigned them agrees — cite these as high-confidence annotations in the interpret report; (3) never substitute the alternatives for the primary output in agglomerate/DAA/figures.
+
 #### Stage `diversity` — tree + alpha + beta + community typing
 
 ```bash
@@ -443,7 +495,11 @@ If the marker reference is unsuited to the primer pair (e.g., reference amplicon
 | `could not find function "derepFastQ"` (dada2) | function name typo — the derep function is lowercase-q `derepFastq` (F28) | use `derepFastq`; parse succeeds and the failure only fires at runtime |
 | `arguments imply differing number of rows: <N>, <M>` at the dada2 script's table write | missing transpose: `makeSequenceTable` returns ROWS = samples / COLUMNS = sequences, the merge contract needs ASVs as rows (F26) | fixed in v1.3.2 script (`t()` before writing); when hand-rolling: transpose + keep per-sample stats via `rowSums`, not `colSums` (F27) |
 | `'names' attribute [n] must be the same length as the vector [m]` + scheduled cores "did not deliver results" (dada2) | `multithread` given as an INTEGER core count crashes the mclapply forking stage on some dada2 builds | pass a LOGICAL (`multithread=TRUE`); `--cpu 0` → single-core; verify single-sample filterAndTrim works for both `multithread=FALSE` and `TRUE` before scripting |
-| `could not find function "fwrite"` (R) | script writes data.table output without loading data.table | `library(data.table)` alongside dada2 (fixed in v1.3.2 denoise_dada2.R) |
+| `Error in assignTaxonomy(...)` / empty bootstrap output (dada2-nb) | training FASTA malformed — headers must be `>ID rank lineage` (id, ONE space, lineage), or the reference ids/taxonomy diverge | rebuild via the recipe's in-silico trim path; verify with a 10-record probe; check `reference_taxonomy` id coverage (the script warns on misses) |
+| dada2-nb assigns almost nothing at deep ranks vs consensus-BLAST (compare_classifications shows low agreement + many one-sided) | full-gene reference vs short queries (length-regime mismatch, F10 family), or divergent reference subsets between methods | run the in-silico primer-span trim pre-step (recipe) and re-run with the SAME reference subset for every method being compared; if still weak, the reference and marker may be mismatched — route to the marker-sanity check |
+| assignTaxonomy OOM-killed (exit 137, silent, no stderr excerpt) | the k-mer table is memory-hungry: 41,868 Mitohelper refs OOMs a 14 GB host; 16,329 also OOMed (verified 2026-11-11); ~1,000 ran fine | pass `--max_records` (stratified subsample; 3–5k fits ~3 GB free) — and note in the report that the comparison ran on the subsample |
+| dada2 assignment rownames are QUERY SEQUENCES, not header ids | assignTaxonomy names output rows by sequence (verified 2026-11-11) — downstream joins on SequenceID then find 0 shared ASVs | fixed in v1.3.3 script (sequence→id remap before writing); if hand-rolling, build a seq→id map from the query FASTA |
+| rank-1 labels look like `<refID> k__Eukaryota` | dada2 splits headers on `;` only — with space-separated headers the reference ID glues onto rank1 (verified: semicolon-separated headers instead shift every rank one column left, losing species) | keep space separators and strip rank1 with `sub("^.* ([A-Za-z])__", "\\1__", x)` in v1.3.3 script; never use `;` as the id/lineage separator |
 | `learnErrors: too few passed-filter reads to learn errors` (dada2) | every sample too shallow after filterAndTrim | check upstream cutadapt retention first; relax `--max_ee_f/r` (c(2,5)) or drop `--trunc_len` before re-running |
 | `mergePairs` returns 0 rows for all samples (dada2) | reads don't overlap: insert longer than R1+R2, or minOverlap too strict for the amplicon | check expected amplicon vs read lengths; lower `--min_overlap` (12→10); if the insert exceeds R1+R2 this marker is not a paired-overlap design — use the UNOISE3 path with NGmerge |
 | `no sequences in merged table` after DADA2 with valid stats | all reads lost to filtering (maxLen/maxEE/truncQ too strict) | inspect the qc FastQC reports; re-run with relaxed `--max_ee_f/r` and no truncation; the `denoise_dada2_stats.tsv` read-flow column shows exactly where reads were lost |

@@ -1,6 +1,6 @@
 # edna-agent
 
-[![Version](https://img.shields.io/badge/version-1.3.2-blue)](#-installation)
+[![Version](https://img.shields.io/badge/version-1.3.3-blue)](#-installation)
 [![Type](https://img.shields.io/badge/type-agent%20skill-blueviolet)](#-installation)
 [![Built with](https://img.shields.io/badge/built%20with-bioinfo--skill--creator-orange)](https://github.com/cheahhl814/bioinfo-skill-creator)
 
@@ -9,8 +9,10 @@ Agent-driven orchestration of environmental DNA (eDNA) metabarcoding analysis fo
 **Repository**: https://github.com/cheahhl814/nf-edna-agent
 
 > [!NOTE]
-> Current version: **v1.3.2** (updated 2026-11-11). Adds a **DADA2 alternative DENOISE engine** (`params: "denoiser": "dada2"`) mirroring QIIME2 `dada2 denoise-paired` — closes the last structural divergence from QIIME2-course workflows and enables engine A/B for marker-sanity checks. 
-> 
+> Current version: **v1.3.3** (updated 2026-11-11). Adds a third classification option, **dada2-nb** (Wang-style k-mer naive Bayes via `dada2::assignTaxonomy`) — closing the TBCG2026 course manual's last named annotation route (BLAST / VSEARCH / trained Naive Bayes) — plus an optional **cross-method comparison mode** that runs every available annotation method side by side and reports rank-level agreement + per-ASV concordance (the canonical taxonomy always stays the primary method's).
+>
+> v1.3.2 adds a **DADA2 alternative DENOISE engine** (`params: "denoiser": "dada2"`) mirroring QIIME2 `dada2 denoise-paired` / `denoise-single` (battle-tested on the single-end Tele01 dataset).
+>
 > v1.3.0 (2026-11-06) gap-filled from the TBCG2026 QIIME2-course comparison: rarefaction curves, Pielou evenness, a consensus-BLAST classify fallback (no IDTAXA model needed), ANCOM-BC as an alternative DAA, and two new edna-visualize figure stages (alpha boxplots + PCoA/PERMANOVA). Renamed from **edna-agent** (the `nf-` prefix marked the removed Nextflow era; see the mirror case `nf-phylogenetics-agent → phylogenetics-agent`). v1.3.1 (2026-11-06, battle-test round 4) shipped 10 real-data fixes (NGmerge `-d`, marker-sanity false-0 trap, ANCOM-BC patches, visualization guards).
 
 ## Contents
@@ -146,7 +148,7 @@ edna-agent/
 ├── params.json              # Render input (skill inventory)
 ├── params/                  # Marker presets: 16s / 18s-v9 / coi / 12s
 ├── env/                     # Per-stage tool environments (qc, denoise, decontam, classification, diversity, association, database, geocuration, visualization)
-├── bin/                     # Stage + auxiliary scripts (R/Julia/Python), incl. consensus_blast_taxonomy.R, ancombc_differential.R, rarefaction.R, skill-update-check.py, summarise_run.py
+├── bin/                     # Stage + auxiliary scripts (R/Julia/Python), incl. consensus_blast_taxonomy.R, assign_taxonomy_dada2.R (naive-Bayes classify), compare_classifications.R (cross-method annotation comparison), ancombc_differential.R, denoise_dada2.R, rarefaction.R, skill-update-check.py, summarise_run.py
 ├── preflight/edna-intake/   # Phase 1 sub-skill (SP1–SP7, E1–E7 verdict gate)
 ├── run/edna-run/            # Phase 2 sub-skill (stage ladder + agent-driven recipe tables)
 ├── interpret/edna-interpret/ # Phase 3 sub-skill (report + narrative + Q&A)

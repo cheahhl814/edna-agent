@@ -15,7 +15,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 RESULTS: list[tuple[str, bool, str]] = []
-VERSION = "1.3.2"
+VERSION = "1.3.3"
 SUBSKILLS = [
     "preflight/edna-intake",
     "run/edna-run",
