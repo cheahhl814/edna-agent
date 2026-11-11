@@ -6,7 +6,7 @@
 
 Agent-driven orchestration of environmental DNA (eDNA) metabarcoding analysis for four marker genes — **16S** (Bacteria/Archaea), **18S-V9**, **COI**, and **12S** (Eukaryota). Covers intake → QC (primer trimming) → denoise (pair merge + ASV inference + decontamination + negative-control filtering) → classify (DECIPHER IDTAXA + confidence filter + agglomeration) → diversity (tree, alpha, beta/PERMANOVA, community typing) → association (differential abundance, correlations) → interpret (structured report + narrative). As of **v1.2.0 there is no workflow engine**: the agent executes each stage's tools directly under per-stage **pixi** environments, following the canonical recipe tables in `run/edna-run/SKILL.md` — validated on two real-data battle-test rounds (2026-08-19, 2026-10-07).
 
-**Repository**: https://github.com/cheahhl814/nf-edna-agent
+**Repository**: https://github.com/cheahhl814/edna-agent
 
 > [!NOTE]
 > Current version: **v1.3.3** (updated 2026-11-11). Adds a third classification option, **dada2-nb** (Wang-style k-mer naive Bayes via `dada2::assignTaxonomy`) — closing the TBCG2026 course manual's last named annotation route (BLAST / VSEARCH / trained Naive Bayes) — plus an optional **cross-method comparison mode** that runs every available annotation method side by side and reports rank-level agreement + per-ASV concordance (the canonical taxonomy always stays the primary method's).
@@ -34,7 +34,7 @@ This is an **agent skill**, not a user-facing library. The recommended install p
 
 ```text
 Install the edna-agent skill from
-https://github.com/cheahhl814/nf-edna-agent —
+https://github.com/cheahhl814/edna-agent —
 clone it into your agent's skills directory (the path your agent watches
 for skills) and confirm it is on PATH. Then read the skill's SKILL.md to
 understand its phases and the Input/Output contract for each. Confirm
@@ -44,8 +44,8 @@ when ready.
 **Option B — manual install:**
 
 ```bash
-git clone https://github.com/cheahhl814/nf-edna-agent.git
-cd nf-edna-agent
+git clone https://github.com/cheahhl814/edna-agent.git
+cd edna-agent
 pixi install          # agent runtime env; per-stage tool envs resolve lazily on first use
 ```
 
