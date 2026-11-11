@@ -2,7 +2,7 @@
 
 [![Version](https://img.shields.io/badge/version-1.3.3-blue)](#-installation)
 [![Type](https://img.shields.io/badge/type-agent%20skill-blueviolet)](#-installation)
-[![Built with](https://img.shields.io/badge/built%20with-bioinfo--skill--creator-orange)](https://github.com/cheahhl814/bioinfo-skill-creator)
+[![Built with](https://img.shields.io/badge/built%20with-bioinfo--skill--creator-orange)](https://github.com/cheahhl814/skill-forge)
 
 Agent-driven orchestration of environmental DNA (eDNA) metabarcoding analysis for four marker genes — **16S** (Bacteria/Archaea), **18S-V9**, **COI**, and **12S** (Eukaryota). Covers intake → QC (primer trimming) → denoise (pair merge + ASV inference + decontamination + negative-control filtering) → classify (DECIPHER IDTAXA + confidence filter + agglomeration) → diversity (tree, alpha, beta/PERMANOVA, community typing) → association (differential abundance, correlations) → interpret (structured report + narrative). As of **v1.2.0 there is no workflow engine**: the agent executes each stage's tools directly under per-stage **pixi** environments, following the canonical recipe tables in `run/edna-run/SKILL.md` — validated on two real-data battle-test rounds (2026-08-19, 2026-10-07).
 
@@ -124,7 +124,7 @@ Tool usage is grounded in each sub-skill's signature library and the battle-test
 
 ## 🔄 Update check
 
-Every skill built with [bioinfo-skill-creator](https://github.com/cheahhl814/bioinfo-skill-creator) ships a self-update check that compares the deployed git SHA against this upstream repo via `git fetch` — no GitHub API call, no extra dependencies.
+Every skill built with [skill-forge](https://github.com/cheahhl814/skill-forge) ships a self-update check that compares the deployed git SHA against this upstream repo via `git fetch` — no GitHub API call, no extra dependencies.
 
 ```bash
 pixi run update-check        # or: python3 bin/skill-update-check.py
@@ -169,7 +169,7 @@ edna-agent/
 
 ## Provenance
 
-Built with the [bioinfo-skill-creator](https://github.com/cheahhl814/bioinfo-skill-creator) meta-skill, following the AiX-BIO skill convention (preflight → build → debug → battle-test evidence chain). Pattern adopted from:
+Built with the [skill-forge](https://github.com/cheahhl814/skill-forge) meta-skill, following the AiX-BIO skill convention (preflight → build → debug → battle-test evidence chain). Pattern adopted from:
 
 - **BettaMt-agents** — https://github.com/cheahhl814/BettaMt-agents
 - **bacterial-genome-analysis** — https://github.com/cheahhl814/bacterial-genome-analysis
