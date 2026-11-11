@@ -3,6 +3,7 @@
   "min_length": 290,
   "max_length": 340,
   "kingdoms": "all",
+  "denoiser": "unoise3",
   "daa_level": "Species",
   "correlation_level": "Species",
   "target_ranks": "Phylum,Family,Genus,Species",

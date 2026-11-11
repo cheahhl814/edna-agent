@@ -1,8 +1,8 @@
 ---
 name: edna-run
-description: "Execute the correct eDNA metabarcoding stage(s) for the run's marker preset — agent-driven: the agent constructs the stage's tool commands from the canonical recipe table, shows them to the scientist, executes them under the per-stage pixi environments, and updates pipeline_state.json only after verified success. Stages: qc (cutadapt + FastQC), denoise (NGmerge + VSEARCH UNOISE3 + decontam + negative-control filter), classify (DECIPHER IDTAXA + confidence filter + agglomeration + optional geocuration), diversity (mafft + FastTree + alpha + beta/PERMANOVA + community typing), association (differential abundance + correlations). Refuses to execute when the upstream preflight/edna-intake verdict is NO-GO. Has 4 explicit ask-user stop points (SP1–SP4). Triggers: 'run eDNA pipeline', 'execute eDNA stages', 'continue eDNA run', 'eDNA QC stage', 'eDNA denoise', 'eDNA classify', 'eDNA diversity', 'eDNA association'."
-version: 1.3.1
-updated: "2026-11-07"
+description: "Execute the correct eDNA metabarcoding stage(s) for the run's marker preset — agent-driven: the agent constructs the stage's tool commands from the canonical recipe table, shows them to the scientist, executes them under the per-stage pixi environments, and updates pipeline_state.json only after verified success. Stages: qc (cutadapt + FastQC), denoise (NGmerge + VSEARCH UNOISE3 + decontam + negative-control filter, with an alternative DADA2 paired-end error-model path via params `denoiser`), classify (DECIPHER IDTAXA + confidence filter + agglomeration + optional geocuration), diversity (mafft + FastTree + alpha + beta/PERMANOVA + community typing), association (differential abundance + correlations). Refuses to execute when the upstream preflight/edna-intake verdict is NO-GO. Has 6 explicit ask-user stop points (SP1–SP6). Triggers: 'run eDNA pipeline', 'execute eDNA stages', 'continue eDNA run', 'eDNA QC stage', 'eDNA denoise', 'eDNA classify', 'eDNA diversity', 'eDNA association'."
+version: 1.3.2
+updated: "2026-11-11"
 triggers:
   - "run eDNA pipeline"
   - "execute eDNA stages"
@@ -16,6 +16,8 @@ triggers:
 
 # edna-run
 
+> **v1.3.2.** New **alternative DENOISE path**: DADA2 paired-end error model (`bin/denoise_dada2.R`, `bioconductor-dada2` in env/denoise) selected via params `denoiser: "dada2"` (default `"unoise3"`, new stop point SP6). Mirrors QIIME2 `dada2 denoise-paired`; emits the same feature-table/rep-seqs contract so decontam/classify run unchanged. Motivation: close the last structural divergence from QIIME2-based course workflows (TBCG2026) and enable direct A/B engine comparisons for the F10/F16 marker-sanity question.
+>
 > **v1.2.0.** Agent-driven only. The `nextflow run` command-construction steps were replaced by the canonical **stage recipe tables** below: each recipe is the exact tool invocation validated on real data (2026-08-19 NF 24 + 2026-10-07 agent-driven rounds). Marker preset + run params are merged into ONE JSON at intake; recipes read merged parameters directly. New signature-library entries from the round-2 battle-test: missing env dependencies (NGmerge), mia↔rbiom pin, empty `--num_clusters`, rank case sensitivity, kingdoms vs mitochondrial superkingdom.
 
 ## Audience
@@ -89,6 +91,15 @@ A stage command exits non-zero → Ask: "`<stage>` failed with `<excerpt>`. Pick
 | No `idtaxa_model` resolved for this run, or the scientist wants a reference-database route instead of a trained classifier | `params.json.idtaxa_model` empty/unresolvable, or user names a reference FASTA + taxonomy TSV | Ask: "(A) **Train an IDTAXA model first** via `idtaxa-training/` (recommended when a curated reference like Mitohelper/SILVA is available — higher specificity); (B) **consensus-BLAST path** — classify against the supplied reference with vsearch + majority-vote (no model needed, mirrors QIIME2 classify-consensus-blast); (C) abort". Default to (B) when a model is absent and a labelled reference FASTA + taxonomy TSV exist, and record the choice in `pipeline_state.json.params_used.classification_method`. |
 
 Auto-pick (B) when `params.json.classification_method == "consensus-blast"` was set at intake; auto-pick (A)-route when the model exists and the param is unset or `"idtaxa"`.
+
+### SP6 — Denoiser choice (denoise stage)
+
+| Trigger | Evidence check | Action |
+| --- | --- | --- |
+| `params.json.denoiser` set | reads the merged value | Auto-pick: `"dada2"` → DADA2 path; anything else/absent → NGmerge+UNOISE3 default |
+| unset AND the scientist is unsure (e.g. wants to compare with QIIME2/course outputs, or reads look like a short dovetail-heavy amplicon) | read-flow context | Ask: "Pick a denoise engine: (A) **NGmerge + UNOISE3** (default — fast, per-sample derep+cluster; needs `-d` on dovetail reads); (B) **DADA2** paired-end error model (mirrors QIIME2 `dada2 denoise-paired`; recommended when cross-checking against QIIME2 outputs)". Record the choice in `pipeline_state.json.params_used.denoiser` |
+
+Auto-pick when `denoiser` is set. Never re-ask mid-run: a completed DENOISE stage pins the engine for the run (classify/diversity consumed its outputs).
 
 `completed_stages` ≥ 2 entries AND user did not specify → Ask: "I see `<N>` stages complete. Pick: (A) only the **next** stage, (B) **all remaining** stages, (C) a specific stage". Auto-pick (≤1 entry + "continue"): next stage only.
 
@@ -176,6 +187,49 @@ ENV[decontam] julia bin/filter_table.jl --feature_table asv_table/decontam_asv_t
 ```
 
 Notes: (1) FIRST USE of the decontam env requires its Julia deps: `ENV[decontam] julia -e 'using Pkg; Pkg.instantiate()'` — run once if ArgParse is missing; (2) empty per-sample tables ARE expected (samples with no ASVs are skipped by merge_tables.R with a warning); (3) the julia filter accepts QIIME2-style TRUE/FALSE strings.
+
+##### Single-end variant (qc + denoise)
+
+When the manifest carries only R1s (`reads_type` == `single` — e.g. Tele01-style pre-demultiplexed single FASTQs), run the qc stage with a SE cutadapt call instead of the paired recipe — F primer as 5′ (`-g`), R primer as 3′ adapter (`-a`), no `-G`/`-p`, writing only `_R1.trimmed.fastq.gz`:
+
+```bash
+ENV[qc] cutadapt --error-rate 0.1 --times 1 --overlap 12 --minimum-length ${P.min_length} -j ${N_CPU} \
+  -g ${P.primers_fwd} -a ${P.primers_rev} --discard-untrimmed \
+  -o results/${RUN_ID}/qc/trimmed/${sid}/${sid}_R1.trimmed.fastq.gz ${r1}
+```
+
+**Choose `min_length` from the LENGTH PROFILE, not the preset**: the preset's `min_length`/`max_length` describe the MERGED amplicon; on pre-trimmed SE reads the primer+linker occupies the first ~29 bp, so probe the length distribution first (e.g. median raw − 29). Tele01: inserts ~84 bp → `min_length 75` (a preset-style 90 would have discarded 100%: "too short"). Record a `--mode single` in params (`dada2_mode: "single"`) so SP6 auto-resolves single.
+
+#### Alternative DENOISE path — DADA2 (paired-end error model)
+
+Fires when params `denoiser: "dada2"` (default `"unoise3"`, SP6). Mirrors QIIME2 `qiime dada2 denoise-paired` — `filterAndTrim → learnErrors → dada` (paired) `→ mergePairs → removeBimeraDenovo(consensus)` in ONE R pass (`bin/denoise_dada2.R`, replaces the per-sample NGmerge→uniques→UNOISE3 loop AND the merge_tables/cat assembly step). Output rows are `ASV1..N` ids (NOT sequence-as-id), ordered by decreasing total abundance, written in the exact feature-table (`ASV_ID` first column) / rep-seqs (`;size=N` headers) contract, so the rename + decontam + classify chain runs UNCHANGED.
+
+```bash
+mkdir -p results/${RUN_ID}/denoise/dada2_filtered
+ENV[denoise] Rscript bin/denoise_dada2.R \
+  --trimmed_dir results/${RUN_ID}/qc/trimmed \
+  --table_out results/${RUN_ID}/denoise/feature-table.tsv \
+  --fasta_out results/${RUN_ID}/denoise/rep-seqs.fna \
+  --stats_out results/${RUN_ID}/denoise/denoise_dada2_stats.tsv \
+  --filtered_dir results/${RUN_ID}/denoise/dada2_filtered \
+  --cpu ${N_CPU}
+
+# assemble into asv_table/ (same layout the summariser reads):
+cp results/${RUN_ID}/denoise/feature-table.tsv results/${RUN_ID}/asv_table/
+cp results/${RUN_ID}/denoise/rep-seqs.fna       results/${RUN_ID}/asv_table/
+awk 'BEGIN{FS=OFS="\t"} {gsub(/:/,"_",$1); print}' results/${RUN_ID}/asv_table/feature-table.tsv > results/${RUN_ID}/asv_table/feature-table_renamed.tsv
+sed '/^>/s/:/_/g' results/${RUN_ID}/asv_table/rep-seqs.fna > results/${RUN_ID}/asv_table/rep-seqs_renamed.fna
+```
+
+Then continue with the decontam + filter + classify chain exactly as the UNOISE3 path (same commands, same relative paths).
+
+Optional params: `--trunc_len_f` / `--trunc_len_r` (0 = no truncation; the TBCG2026 course's main table used 180/180 on 2×300 reads for the same MiFish dataset — truncation is dataset-specific tuning, re-run as a sensitivity variant via SP3, not a default), `--max_len` (do NOT cap at the merged amplicon length — runs-through reads are how mergePairs resolves short inserts; same reasoning as the qc-stage v1.1.0 Finding-2 note), `--min_overlap 12`, `--max_ee_f` / `--max_ee_r` 2, `--pool` (more power for low-biomass eDNA, slower) and `--chimera_method consensus` are the dada2 script's defaults.
+
+**Single-end mode**: pass `--mode single` (or `--mode auto` — R2 absence auto-resolves) and drop `--trunc_len_r`/`--max_ee_r`; mirrors QIIME2 `denoise-single` (no mergePairs step; verified live 2026-11-11 round 5, Tele01: 504 ASVs / 17 samples, 3.2% bimeras). **RAM guard**: on small hosts (≤16 GB) run multi-sample sets with `--cpu 0` (single-core) — `multithread=TRUE` forks per-worker derep copies and can OOM mid-run; the TBCG2026 paired attempt was abandoned for this reason (paired A/B deferred).
+
+**Truncation is dataset-shaped** (round-5 probe): TBCG2026 2×300 kept 0.9% of reads with `maxEE=(2,2)` and NO truncLen — quality tails kill the filter; truncLen 180/180 kept 78.3%. Tele01 SE (pre-trimmed ~113 bp reads) needs no truncation. Decide per run from the FastQC/per-base report; never bake a trunc value into a marker preset.
+
+Notes: (1) requires `bioconductor-dada2` in env/denoise (shipped in the v1.3.2 manifest; else `pixi add --manifest-path env/denoise/pixi.toml bioconductor-dada2`); (2) samples with 0 merged reads keep an all-zero column (merge_tables.R semantics preserved); (3) `denoise_dada2_stats.tsv` is the QIIME2 `denoising-stats.qzv` analogue — cite it in the interpret report's read-flow section; (4) when a run carries BOTH engines, summarize ASV counts side by side (valuable F10/F16 marker-sanity A/B evidence) but never merge the two engines' outputs into one taxonomy table.
 
 #### Stage `classify` — IDTAXA + confidence filter + agglomeration
 
@@ -384,6 +438,15 @@ If the marker reference is unsuited to the primer pair (e.g., reference amplicon
 | `The 'microbiome' package is needed to process the imported data` (ANCOMBC) | association env lacks bioconductor-microbiome (F20) | shipped in v1.3.1 manifest; else `pixi add --manifest-path env/association/pixi.toml bioconductor-microbiome` |
 | sample-ID mismatch at agglomerate/visualization ("No common samples") | manifest IDs carry the Casava `_S<idx>` suffix, metadata sample-ids don't (F17) | normalize one side at intake — strip `_S\d+` from manifest IDs or append to metadata; verify with a quick intersection before CLASSIFY |
 | `argument --num_clusters: invalid int value: ''` | pipeline default empty string passed as CLI arg | omit the flag (script auto-determines); never pass empty string |
+| `filterAndTrim: 'truncLen' longer than read length` / `reads truncated to 0` (dada2) | truncLen set beyond the read length, or 0 treated as truncate-to-zero | 0 means NO truncation — the script disables truncLen unless both sides are set; verify with `--trunc_len_f/r` inside the read length (TBCG2026 course used 180/180 on 2×300) |
+| `Not all provided files exist` (dada2 learnErrors/derepFastq) | a sample with 0 filtered reads: `filterAndTrim` refuses to write its output FASTQ, so the per-sample loop references a missing file (F25) | fixed in v1.3.2 script (zero-read samples are excluded with a warning); if hand-rolling, drop 0-read samples before `learnErrors` — mirrors the merge_tables.R empty-sample skip |
+| `could not find function "derepFastQ"` (dada2) | function name typo — the derep function is lowercase-q `derepFastq` (F28) | use `derepFastq`; parse succeeds and the failure only fires at runtime |
+| `arguments imply differing number of rows: <N>, <M>` at the dada2 script's table write | missing transpose: `makeSequenceTable` returns ROWS = samples / COLUMNS = sequences, the merge contract needs ASVs as rows (F26) | fixed in v1.3.2 script (`t()` before writing); when hand-rolling: transpose + keep per-sample stats via `rowSums`, not `colSums` (F27) |
+| `'names' attribute [n] must be the same length as the vector [m]` + scheduled cores "did not deliver results" (dada2) | `multithread` given as an INTEGER core count crashes the mclapply forking stage on some dada2 builds | pass a LOGICAL (`multithread=TRUE`); `--cpu 0` → single-core; verify single-sample filterAndTrim works for both `multithread=FALSE` and `TRUE` before scripting |
+| `could not find function "fwrite"` (R) | script writes data.table output without loading data.table | `library(data.table)` alongside dada2 (fixed in v1.3.2 denoise_dada2.R) |
+| `learnErrors: too few passed-filter reads to learn errors` (dada2) | every sample too shallow after filterAndTrim | check upstream cutadapt retention first; relax `--max_ee_f/r` (c(2,5)) or drop `--trunc_len` before re-running |
+| `mergePairs` returns 0 rows for all samples (dada2) | reads don't overlap: insert longer than R1+R2, or minOverlap too strict for the amplicon | check expected amplicon vs read lengths; lower `--min_overlap` (12→10); if the insert exceeds R1+R2 this marker is not a paired-overlap design — use the UNOISE3 path with NGmerge |
+| `no sequences in merged table` after DADA2 with valid stats | all reads lost to filtering (maxLen/maxEE/truncQ too strict) | inspect the qc FastQC reports; re-run with relaxed `--max_ee_f/r` and no truncation; the `denoise_dada2_stats.tsv` read-flow column shows exactly where reads were lost |
 | `Taxonomic rank 'Genus' not found` (DAA) | case-sensitive rank match in differential_abundance.R (columns are lowercase) | pass lowercase ("genus"); upstream fix: case-insensitive match as in correlation_analysis.R |
 | `Removed 2719 ASVs with unassigned Kingdom. Remaining: 0` | kingdoms preset incompatible with mitochondrial references | use `kingdoms: "all"` for 12S/COI (preset fixed v1.2.0) |
 | summariser `AttributeError: NoneType … get` | section None in summary dict | guard fixed in v1.2.0 bin/summarise_run.py; rerun |

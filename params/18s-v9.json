@@ -3,6 +3,7 @@
   "min_length": 100,
   "max_length": 180,
   "kingdoms": "Eukaryota",
+  "denoiser": "unoise3",
   "daa_level": "Species",
   "correlation_level": "Species",
   "target_ranks": "Phylum,Family,Genus,Species",
