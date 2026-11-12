@@ -25,6 +25,7 @@ requires:
   - "Julia ≥ 1.9 with ArgParse"
   - "pixi (curl -fsSL https://pixi.sh/install.sh | bash) — manages per-stage tool envs under env/"
   - "Internet access to NCBI eutils (entrez_summary, entrez_fetch) for the FASTA-preparation stage"
+disable-model-invocation: true
 ---
 
 # Sub-Skill: idtaxa-training

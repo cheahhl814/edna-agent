@@ -38,6 +38,7 @@ triggers:
 requires:
   - "R ≥ 4.2 with mia, miaViz, sechm, ComplexHeatmap, data.table, argparse, ggplot2, S4Vectors"
   - "pixi (curl -fsSL https://pixi.sh/install.sh | bash) — manages per-stage tool envs under env/"
+disable-model-invocation: true
 ---
 
 # Sub-Skill: eDNA-visualize

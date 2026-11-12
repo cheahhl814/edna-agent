@@ -13,6 +13,7 @@ requires:
   - "Internet access to one of: drive.google.com, github.com, zenodo.org, ftp.arb-silva.de, www.reference-midori.info, www.boldsystems.org"
   - "pixi (for env inspection)"
   - "R ≥ 4.2 (for DECIPHER check)"
+disable-model-invocation: true
 ---
 
 # Sub-Skill: reference-db-preflight

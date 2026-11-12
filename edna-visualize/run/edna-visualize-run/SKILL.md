@@ -21,6 +21,7 @@ requires:
   - "Preflight verdict = GO or GO-WITH-WARNINGS (gates this sub-skill)"
   - "pixi (runs the R scripts)"
   - "R ≥ 4.2 with mia, miaViz, sechm, ComplexHeatmap, data.table, ggplot2, S4Vectors, argparse, vegan (rstatix/ggpubr optional)"
+disable-model-invocation: true
 ---
 
 # Sub-Skill: edna-visualize-run

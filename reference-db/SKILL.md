@@ -27,6 +27,7 @@ requires:
   - "Disk space: ≥ 5 GB free for SILVA (~1 GB), PR2 (~500 MB), MIDORI2 (~600 MB), MitoFish (~600 MB)"
   - "Optional: DECIPHER + rentrez (for training markers without a pre-trained IDTAXA reference)"
   - "Optional: idtaxa-training sub-skill (in edna-agent) for custom-reference workflows"
+disable-model-invocation: true
 ---
 
 # Sub-Skill: reference-db

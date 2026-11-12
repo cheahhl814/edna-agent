@@ -12,6 +12,7 @@ requires:
   - "curl or wget (for downloads)"
   - "pixi (for the R validation script)"
   - "R ≥ 4.2 with DECIPHER, Biostrings (for validation)"
+disable-model-invocation: true
 ---
 
 # Sub-Skill: reference-db-run

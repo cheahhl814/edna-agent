@@ -11,6 +11,7 @@ triggers:
   - "eDNA pipeline parameters"
   - "marker gene 16S 18S COI 12S"
   - "set up eDNA metabarcoding"
+disable-model-invocation: true
 ---
 
 # edna-intake

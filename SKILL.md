@@ -21,6 +21,7 @@ requires:
   - "Pixi (curl -fsSL https://pixi.sh/install.sh | bash) — manages per-stage tool environments under env/"
   - "Python ≥ 3.10 (system) for intake/summary artifacts"
   - "git"
+disable-model-invocation: true
 ---
 
 # Meta-Skill: edna-agent

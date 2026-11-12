@@ -13,6 +13,7 @@ requires:
   - "curl (for NCBI eutils connectivity test)"
   - "R ≥ 4.2 (for DECIPHER check)"
   - "Internet access (for SP2)"
+disable-model-invocation: true
 ---
 
 # Sub-Skill: idtaxa-training-preflight

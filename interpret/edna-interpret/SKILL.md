@@ -10,6 +10,7 @@ triggers:
   - "eDNA Results section"
   - "eDNA diversity interpretation"
   - "eDNA differential abundance"
+disable-model-invocation: true
 ---
 
 # edna-interpret

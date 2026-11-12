@@ -18,6 +18,7 @@ requires:
   - "R ≥ 4.2 with DECIPHER, Biostrings, rentrez"
   - "Julia ≥ 1.9 with ArgParse"
   - "Internet access (for Stage 1 if input is raw NCBI FASTA)"
+disable-model-invocation: true
 ---
 
 # Sub-Skill: idtaxa-training-run

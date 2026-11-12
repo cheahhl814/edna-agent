@@ -12,6 +12,7 @@ triggers:
   - "eDNA classify"
   - "eDNA diversity"
   - "eDNA association"
+disable-model-invocation: true
 ---
 
 # edna-run

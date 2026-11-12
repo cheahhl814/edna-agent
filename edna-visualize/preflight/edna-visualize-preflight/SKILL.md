@@ -11,6 +11,7 @@ triggers:
 requires:
   - "pixi (for env inspection)"
   - "R ≥ 4.2 (for mia check)"
+disable-model-invocation: true
 ---
 
 # Sub-Skill: edna-visualize-preflight
