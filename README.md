@@ -1,6 +1,6 @@
 # edna-agent
 
-[![Version](https://img.shields.io/badge/version-1.3.3-blue)](#-installation)
+[![Version](https://img.shields.io/badge/version-1.4.0-blue)](#-installation)
 [![Type](https://img.shields.io/badge/type-agent%20skill-blueviolet)](#-installation)
 [![Built with](https://img.shields.io/badge/built%20with-bioinfo--skill--creator-orange)](https://github.com/cheahhl814/skill-forge)
 
@@ -9,10 +9,12 @@ Agent-driven orchestration of environmental DNA (eDNA) metabarcoding analysis fo
 **Repository**: https://github.com/cheahhl814/edna-agent
 
 > [!NOTE]
-> Current version: **v1.3.3** (updated 2026-11-11). Adds a third classification option, **dada2-nb** (Wang-style k-mer naive Bayes via `dada2::assignTaxonomy`) — closing the TBCG2026 course manual's last named annotation route (BLAST / VSEARCH / trained Naive Bayes) — plus an optional **cross-method comparison mode** that runs every available annotation method side by side and reports rank-level agreement + per-ASV concordance (the canonical taxonomy always stays the primary method's).
+> Current version: **v1.4.0** (updated 2026-11-13). **Geocuration removed** — occurrence-record validation is outsourced to the external [`occurrence-crosscheck`](https://github.com/cheahhl814/occurrence-crosscheck) skill (`interpret → occurrence-crosscheck: validate → viz → publish`). The in-house `bin/geocurate_fetch.R` / `bin/geocurate_check.R`, `env/geocuration/`, and the `geocurate` / `geocurate_buffer` preset keys are deleted; record coordinates come from the sample sheet — there is no runtime geocode step. `occurrence-crosscheck` cross-checks records against GBIF/OBIS/WoRMS/FishBase + environmental envelopes (realm-aware), feeds the viz and DwC-A publishing phases, and shares the `biodb-fetch` dependency.
 >
+> v1.3.3 (2026-11-11) added a third classification option, **dada2-nb** (Wang-style k-mer naive Bayes via `dada2::assignTaxonomy`) — closing the TBCG2026 course manual's last named annotation route (BLAST / VSEARCH / trained Naive Bayes) — plus an optional **cross-method comparison mode** that runs every available annotation method side by side and reports rank-level agreement + per-ASV concordance (the canonical taxonomy always stays the primary method's).
+> 
 > v1.3.2 adds a **DADA2 alternative DENOISE engine** (`params: "denoiser": "dada2"`) mirroring QIIME2 `dada2 denoise-paired` / `denoise-single` (battle-tested on the single-end Tele01 dataset).
->
+> 
 > v1.3.0 (2026-11-06) gap-filled from the TBCG2026 QIIME2-course comparison: rarefaction curves, Pielou evenness, a consensus-BLAST classify fallback (no IDTAXA model needed), ANCOM-BC as an alternative DAA, and two new edna-visualize figure stages (alpha boxplots + PCoA/PERMANOVA). Renamed from **edna-agent** (the `nf-` prefix marked the removed Nextflow era; see the mirror case `nf-phylogenetics-agent → phylogenetics-agent`). v1.3.1 (2026-11-06, battle-test round 4) shipped 10 real-data fixes (NGmerge `-d`, marker-sanity false-0 trap, ANCOM-BC patches, visualization guards).
 
 ## Contents
@@ -87,38 +89,40 @@ pixi run test        # structural smoke tests
 
 The analysis follows a phased evidence chain. Each phase consumes the artifacts of the previous phase and gates progression with verdict checks.
 
-| # | Phase | Goal | Sub-skill | Artifact produced |
-|:--|:------|:-----|:----------|:------------------|
-| **1** | **Intake** | Gather parameters (marker, primers, metadata, IDTAXA model), validate inputs (7 evidence items E1–E7), write the verdict-gated machine contract | `preflight/edna-intake/` | `results/<run_id>/pipeline_state.json` + single merged `params.json` |
-| **2** | **Run** | Execute stages agent-driven from the recipe tables (qc → denoise → classify → diversity → association), verifying outputs before updating state | `run/edna-run/` | per-stage outputs under `results/<run_id>/` + updated state |
-| **3** | **Interpret** | Turn `run_summary.json` into a structured report + narrative, then Q&A | `interpret/edna-interpret/` | `<run_id>-report.md` + `narrative.md` |
+| #     | Phase         | Goal                                                                                                                                            | Sub-skill                   | Artifact produced                                                    |
+|:----- |:------------- |:----------------------------------------------------------------------------------------------------------------------------------------------- |:--------------------------- |:-------------------------------------------------------------------- |
+| **1** | **Intake**    | Gather parameters (marker, primers, metadata, IDTAXA model), validate inputs (7 evidence items E1–E7), write the verdict-gated machine contract | `preflight/edna-intake/`    | `results/<run_id>/pipeline_state.json` + single merged `params.json` |
+| **2** | **Run**       | Execute stages agent-driven from the recipe tables (qc → denoise → classify → diversity → association), verifying outputs before updating state | `run/edna-run/`             | per-stage outputs under `results/<run_id>/` + updated state          |
+| **3** | **Interpret** | Turn `run_summary.json` into a structured report + narrative, then Q&A                                                                          | `interpret/edna-interpret/` | `<run_id>-report.md` + `narrative.md`                                |
 
 Auxiliary sub-skills (independent, chainable):
 
-| Sub-skill | Purpose |
-|:----------|:--------|
-| `idtaxa-training/` | Train a DECIPHER IDTAXA classifier from a reference FASTA (NCBI headers → DECIPHER headers → trained `.rds`) |
-| `reference-db/` | Curated download URLs for the 4 marker reference databases + validation + training chain |
-| `edna-visualize/` | Publication-ready figures from the rank count tables — plus, in v1.3.0, grouped alpha-diversity boxplots and PCoA ordination + PERMANOVA (optional stages 4–5) |
+| Sub-skill          | Purpose                                                                                                                                                        |
+|:------------------ |:-------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `idtaxa-training/` | Train a DECIPHER IDTAXA classifier from a reference FASTA (NCBI headers → DECIPHER headers → trained `.rds`)                                                   |
+| `reference-db/`    | Curated download URLs for the 4 marker reference databases + validation + training chain                                                                       |
+| `edna-visualize/`  | Publication-ready figures from the rank count tables — plus, in v1.3.0, grouped alpha-diversity boxplots and PCoA ordination + PERMANOVA (optional stages 4–5) |
 
 > [!TIP]
 > Read each sub-skill's `SKILL.md` for the full procedure, its ask-user stop points, and its signature library (stderr pattern → cause → fix).
+
+Companion external skills (not part of this repo): **`occurrence-crosscheck`** — after `interpret/edna-interpret`, validate the run's occurrence records against GBIF/OBIS/WoRMS/FishBase + environmental envelopes, then viz → publish (the designated record-validation step since v1.4.0; replaces the removed in-house geocuration). **`read-qc-trimming`** (raw reads, before intake) and **`edna-gbif-publish`** (GBIF publishing) also chain cleanly with this pipeline.
 
 ## 🧰 Tools
 
 All tools are resolved from conda-forge/bioconda via the pinned pixi manifests.
 
-| Stage env | Tools |
-|:----------|:------|
-| agent runtime (`pixi.toml`) | python ≥3.10, julia ≥1.10, pandas, pyyaml, jsonschema |
-| `env/qc/` | cutadapt 5.x, fastqc |
-| `env/denoise/` | NGmerge 0.5, vsearch 2.3x, biom-format, R (argparse, data.table, **DADA2** — alternative engine, v1.3.2) |
-| `env/decontam/` | julia 1.12 (ArgParse, CSV, DataFrames, FASTX, HypothesisTests), auto-instantiate task |
-| `env/classification/` | R 4.5 + Bioconductor (DECIPHER, TreeSummarizedExperiment, mia 1.18 + rbiom 2.2.1 pin, mia), seqtk |
-| `env/diversity/` | R 4.5 (ape, scater, mia/rbiom 2.2.1, ggplot2, vegan), mafft, FastTree |
-| `env/association/` | R 4.5 (Maaslin2, ANCOMBC, data.table, ggplot2, rbiom 2.2.1 pin) |
-| `env/visualization/` | R 4.5 (mia, miaViz, sechm, ComplexHeatmap, vegan, rstatix/ggpubr, rbiom 2.2.1) — edna-visualize figures (materialized in v1.3.0) |
-| `env/database/`, `env/geocuration/` | reference/geocuration helpers (rentrez, xml2, etc.) |
+| Stage env                           | Tools                                                                                                                            |
+|:----------------------------------- |:-------------------------------------------------------------------------------------------------------------------------------- |
+| agent runtime (`pixi.toml`)         | python ≥3.10, julia ≥1.10, pandas, pyyaml, jsonschema                                                                            |
+| `env/qc/`                           | cutadapt 5.x, fastqc                                                                                                             |
+| `env/denoise/`                      | NGmerge 0.5, vsearch 2.3x, biom-format, R (argparse, data.table, **DADA2** — alternative engine, v1.3.2)                         |
+| `env/decontam/`                     | julia 1.12 (ArgParse, CSV, DataFrames, FASTX, HypothesisTests), auto-instantiate task                                            |
+| `env/classification/`               | R 4.5 + Bioconductor (DECIPHER, TreeSummarizedExperiment, mia 1.18 + rbiom 2.2.1 pin, mia), seqtk                                |
+| `env/diversity/`                    | R 4.5 (ape, scater, mia/rbiom 2.2.1, ggplot2, vegan), mafft, FastTree                                                            |
+| `env/association/`                  | R 4.5 (Maaslin2, ANCOMBC, data.table, ggplot2, rbiom 2.2.1 pin)                                                                  |
+| `env/visualization/`                | R 4.5 (mia, miaViz, sechm, ComplexHeatmap, vegan, rstatix/ggpubr, rbiom 2.2.1) — edna-visualize figures (materialized in v1.3.0) |
+| `env/database/`                     | reference-database helpers (rentrez, xml2, etc.)                                                                                                  |
 
 Tool usage is grounded in each sub-skill's signature library and the battle-test evidence (two full real-data runs) — the agent reads the documented recipes instead of guessing flags.
 
@@ -130,13 +134,13 @@ Every skill built with [skill-forge](https://github.com/cheahhl814/skill-forge) 
 pixi run update-check        # or: python3 bin/skill-update-check.py
 ```
 
-| Verdict | Exit | Meaning |
-|:--------|:-----|:--------|
-| `UP-TO-DATE` | 0 | Local HEAD matches origin/HEAD |
-| `LOCAL-AHEAD` | 0 | Unpushed local commits; no action needed |
-| `BEHIND-BY-N` | 1 | Upstream is N commits ahead → re-sync from this repo |
-| `OFFLINE` | 2 | `git fetch` failed; informational only |
-| `NO-ORIGIN` | 2 | No `origin` remote configured; informational only |
+| Verdict       | Exit | Meaning                                              |
+|:------------- |:---- |:---------------------------------------------------- |
+| `UP-TO-DATE`  | 0    | Local HEAD matches origin/HEAD                       |
+| `LOCAL-AHEAD` | 0    | Unpushed local commits; no action needed             |
+| `BEHIND-BY-N` | 1    | Upstream is N commits ahead → re-sync from this repo |
+| `OFFLINE`     | 2    | `git fetch` failed; informational only               |
+| `NO-ORIGIN`   | 2    | No `origin` remote configured; informational only    |
 
 ## 📁 Repository layout
 
@@ -147,7 +151,7 @@ edna-agent/
 ├── pixi.toml                # Agent runtime env (pixi install)
 ├── params.json              # Render input (skill inventory)
 ├── params/                  # Marker presets: 16s / 18s-v9 / coi / 12s
-├── env/                     # Per-stage tool environments (qc, denoise, decontam, classification, diversity, association, database, geocuration, visualization)
+├── env/                     # Per-stage tool environments (qc, denoise, decontam, classification, diversity, association, database, visualization)
 ├── bin/                     # Stage + auxiliary scripts (R/Julia/Python), incl. consensus_blast_taxonomy.R, assign_taxonomy_dada2.R (naive-Bayes classify), compare_classifications.R (cross-method annotation comparison), ancombc_differential.R, denoise_dada2.R, rarefaction.R, skill-update-check.py, summarise_run.py
 ├── preflight/edna-intake/   # Phase 1 sub-skill (SP1–SP7, E1–E7 verdict gate)
 ├── run/edna-run/            # Phase 2 sub-skill (stage ladder + agent-driven recipe tables)

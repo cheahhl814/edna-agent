@@ -1,8 +1,8 @@
 ---
 name: edna-agent
 description: Agent-driven orchestration of environmental DNA (eDNA) metabarcoding analysis for four marker genes — 16S (Bacteria/Archaea), 18S-V9, COI, and 12S (Eukaryota) — covering intake → QC → denoise → classify (IDTAXA / consensus-BLAST / dada2-nb naive-Bayes, optional cross-method comparison) → diversity → association → interpret with marker-specific parameter presets. The agent executes every stage tool directly (cutadapt, FastQC, NGmerge/UNOISE3 or DADA2 denoiser, decontam, IDTAXA, consensus-BLAST, naive-Bayes, Maaslin2) via per-stage pixi environments; no Nextflow required. Mirrors the BettaMt ask-user pattern and the skill-forge evidence chain (preflight → run → interpret). Use when the user asks to "run an eDNA metabarcoding analysis", "process 16S/18S/COI/12S amplicon reads", "interpret eDNA results", "identify fish species from eDNA", or "set up an eDNA amplicon run". Builds on read-qc-trimming (raw-read QC upstream) and pairs with edna-gbif-publish (downstream publishing) and edna-visualize (figures).
-version: 1.3.3
-updated: "2026-11-11"
+version: 1.4.0
+updated: "2026-11-13"
 triggers:
   - "run eDNA metabarcoding"
   - "process 16S amplicon reads"
@@ -26,6 +26,8 @@ disable-model-invocation: true
 
 # Meta-Skill: edna-agent
 
+> **v1.4.0.** **Geocuration removed; record validation outsourced to `occurrence-crosscheck`.** The in-house site-coordinate curation (`bin/geocurate_fetch.R`, `bin/geocurate_check.R`, `env/geocuration/`, `geocurate`/`geocurate_buffer` preset keys) is deleted — occurrence validation is one pipeline now: after `interpret/edna-interpret`, route to the external `occurrence-crosscheck` skill (`validate → viz → publish`), which cross-checks records against GBIF/OBIS/WoRMS/FishBase + environmental envelopes realm-aware. Coordinates come from the sample sheet; no runtime geocode step. Note: stale `geocurate` keys left in an old `pipeline_state.json` fire the SP2 schema-mismatch stop point with a warning ("stale geocurate keys are removed, run not invalidated") — see the SP2 signature-library entry. Maps and the `occurrence-crosscheck` handoff row in the composability table reflect this target state.
+>
 > **v1.3.3.** Third SP5 classification option: **dada2-nb** (Wang-style k-mer naive-Bayes via `dada2::assignTaxonomy`, `bin/assign_taxonomy_dada2.R` — runs under `env/denoise`, same reference inputs and idtaxa-style output contract as consensus-BLAST), closing the TBCG2026 manual's third named annotation route (BLAST / VSEARCH / trained Naive Bayes). New OPTIONAL **classification comparison mode** (`classification_comparison: true`): the primary method keeps the canonical outputs while non-primary methods run into `taxonomy_alternatives/` and `bin/compare_classifications.R` reports rank-level agreement + per-ASV concordance — side by side, never merged (Maaslin2/ANCOM-BC precedent).
 >
 > **v1.3.2.** New **alternative DENOISE engine**: DADA2 paired-end error model (`bin/denoise_dada2.R`, `bioconductor-dada2` in `env/denoise`), selected by params `denoiser: "dada2"` (default `"unoise3"`; new run-skill stop point **SP6**). Mirrors QIIME2 `dada2 denoise-paired` (filterAndTrim → learnErrors → dada paired → mergePairs → consensus chimera removal) AND `denoise-single` (`--mode single` for single-end reads, battle-tested live on the Tele01 SE dataset: 504 ASVs/17 samples); emits the same feature-table / rep-seqs contract, so decontam → classify → downstream is unchanged. Round-5 findings F25–F28 (empty-sample guard, table transpose + per-sample stats orientation, derep casing) encoded in the script and signature library. Closes the last structural divergence from QIIME2-course workflows (TBCG2026 audit, 2026-11-11); the paired UNOISE3-vs-DADA2 A/B on TBCG2026 is deferred (14 GB host is RAM-bound — run the DADA2 path single-core there). Marker presets now ship `"denoiser"` (default `"unoise3"`).
@@ -127,23 +129,23 @@ This meta-skill orchestrates eDNA metabarcoding analysis through three phases:
 2. **`run/edna-run`** — read `pipeline_state.json`, determine the next stage (qc → denoise → classify → diversity → association), construct the stage's tool commands from the recipe table, execute via pixi stage envs, and update state after each verified stage.
 3. **`interpret/edna-interpret`** — read `results/{run_id}/run_summary.json`, turn it into a structured `<run_id>-report.md` and `narrative.md`, then enter an interactive Q&A loop.
 
-Each phase ships its own **ask-user stop points** for decision ambiguity inside the phase (e.g., primer mismatch tolerance, geocuration on/off, DAA method choice).
+Each phase ships its own **ask-user stop points** for decision ambiguity inside the phase (e.g., primer mismatch tolerance, DAA method choice, occurrence-crosscheck realm).
 
 ## Prerequisites
 
-- **Pixi** — manages per-stage tool envs under `env/{qc,denoise,classification,database,diversity,geocuration,association}/pixi.toml`. First run of a stage resolves and caches its env automatically; no manual conda setup.
+- **Pixi** — manages per-stage tool envs under `env/{qc,denoise,classification,database,diversity,association}/pixi.toml`. First run of a stage resolves and caches its env automatically; no manual conda setup.
 - **Python ≥ 3.10** (system) for `bin/skill-update-check.py` and the intake/summary artifacts.
 - **Reference assets per marker** — trained IDTAXA models live under `assets/{16s,18s-v9,coi,12s}/` and are gitignored (supply your own; the `idtaxa-training/` sub-skill trains one from a reference FASTA, the `reference-db/` sub-skill sources reference databases).
 - **git** — for versioning and commits.
 
 ## Marker presets (`params/`)
 
-| Preset        | Marker | Length range | Kingdoms          | DAA/correlation level | Geocurate |
-| ------------- | ------ | ------------ | ----------------- | --------------------- | --------- |
-| `16s.json`    | 16S    | 350–550 bp   | Bacteria, Archaea | Genus                 | off       |
-| `18s-v9.json` | 18S-V9 | 100–180 bp   | Eukaryota         | Species               | off       |
-| `coi.json`    | COI    | 290–340 bp   | Eukaryota         | Species               | on        |
-| `12s.json`    | 12S    | 150–220 bp   | all (mitochondria)| Species               | off       |
+| Preset        | Marker | Length range | Kingdoms          | DAA/correlation level |
+| ------------- | ------ | ------------ | ----------------- | --------------------- |
+| `16s.json`    | 16S    | 350–550 bp   | Bacteria, Archaea | Genus                 |
+| `18s-v9.json` | 18S-V9 | 100–180 bp   | Eukaryota         | Species               |
+| `coi.json`    | COI    | 290–340 bp   | Eukaryota         | Species               |
+| `12s.json`    | 12S    | 150–220 bp   | all (mitochondria)| Species               |
 
 At intake, the preset and the run-specific `params.json` are **merged into one JSON object** (preset first, run overrides last-wins) because CLI flag-lists are single-file: `merged = {**preset, **run_specific}` — see the v1.1.0 signature-library entry for the multi-`-params-file` regression lesson. Each preset carries `"denoiser"` (`"unoise3"` default, or `"dada2"` for the alternative paired-end error model — see the run sub-skill's SP6).
 
@@ -174,7 +176,7 @@ results/{run_id}/
 | `pixi-skill` | Use to add/modify the per-stage pixi envs under `env/`. |
 | `skill-forge` | Meta-skill: battle-test and rebuild this skill (`test_smoke.py --offline`). |
 | `edna-gbif-publish` | After `interpret/edna-interpret`, publish occurrence data to GBIF. |
-| `geocoding` | Used internally by `bin/geocurate_fetch.R` if geocuration is enabled for a run. |
+| `occurrence-crosscheck` | After `interpret/edna-interpret`: validate the run's occurrence records against GBIF/OBIS/WoRMS/FishBase + environmental envelopes, then viz → publish. Chain: `interpret → occurrence-crosscheck (validate → viz → publish)`. Coordinates come from the sample sheet (`scientificName, decimalLatitude, decimalLongitude, eventDate`) — there is no runtime geocode step. Realm is a per-run choice (marine/freshwater/terrestrial; coastal/estuarine fish runs → marine). `crosscheck` preflight hard-fails without `--user-email` (SP-4): the agent MUST ask the user for their contact email. OBIS publishing additionally needs WoRMS `scientificNameID` LSIDs; biodb-fetch owns OBIS rate spacing. Outputs (`enriched.parquet`, `crosscheck_report.json`, `flagged_occurrences.tsv`, `review_queue.csv`) are the handoff artifacts to viz/publish. |
 | **`idtaxa-training/`** (this repo) | Run **before** the first-ever run if you don't yet have an IDTAXA `.rds` model. NCBI FASTA → DECIPHER headers → trained `.rds`. |
 | **`reference-db/`** (this repo) | Curated download URLs for the 4 marker reference databases + validation + training chain. |
 | **`edna-visualize/`** (this repo) | After `interpret/edna-interpret`: publication-ready figures from the rank count tables. |
@@ -187,6 +189,7 @@ results/{run_id}/
 | `run/edna-run` | `interpret/edna-interpret` | `results/{run_id}/run_summary.json` (compact, LLM-loadable) |
 | `run/edna-run` | next `run/edna-run` invocation | updated `pipeline_state.json` with new `completed_stages` |
 | `interpret/edna-interpret` | human / manuscript | `results/{run_id}/<run_id>-report.md` + `narrative.md` |
+| `interpret/edna-interpret` | `occurrence-crosscheck` (validate) | sample-sheet-derived 4-column occurrence CSV (`scientificName, decimalLatitude, decimalLongitude, eventDate`) |
 
 ## What NOT to do
 

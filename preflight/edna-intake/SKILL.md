@@ -1,8 +1,8 @@
 ---
 name: edna-intake
 description: "Validate eDNA metabarcoding run inputs and write the initial pipeline_state.json with a GO / GO-WITH-WARNINGS / NO-GO verdict. Mirrors the bettamt-preflight pattern (gather inputs → compute evidence → write the machine contract). v1.2.0: pipeline renamed edna-agent; the single merged params.json (preset + run overrides) IS the artifact written here. Computes 7 evidence items (marker, manifest schema, sample-count parity, metadata completeness, IDTAXA model, tool + pixi env availability, disk) and refuses to write a GO verdict if any required tool or input is missing. The downstream run/edna-run sub-skill refuses to execute without verdict ≥ GO-WITH-WARNINGS. Has 7 explicit ask-user stop points (SP1–SP7) that fire only when evidence is ambiguous. Triggers: 'new eDNA run', 'start eDNA run', 'eDNA intake', 'resume eDNA run', 'eDNA pipeline parameters', 'marker gene 16S 18S COI 12S', 'set up eDNA metabarcoding'."
-version: 1.3.3
-updated: "2026-11-11"
+version: 1.4.0
+updated: "2026-11-13"
 triggers:
   - "new eDNA run"
   - "start eDNA run"
@@ -16,6 +16,8 @@ disable-model-invocation: true
 
 # edna-intake
 
+> **v1.4.0.** Geocuration removed from the pipeline; occurrence validation now routes to the external `occurrence-crosscheck` skill after `interpret/edna-interpret`. Intake adds an optional, non-blocking soft warning (see Step 3): if the user plans occurrence cross-checking/publishing, the metadata TSV should carry `decimalLatitude`, `decimalLongitude`, and `eventDate` per site — missing coordinates are a sample-sheet gap to fix here, not a runtime geocode step. Not a new stop point; verdict logic unchanged.
+>
 > **v1.1.0.** Adds the canonical BettaMt / `bettamt-preflight` structure (§0 Inputs/Outputs contract, §0.5 Ask-User Stop Points with Evidence + Recommend + Options, §Troubleshooting — Signature library, GO / GO-WITH-WARNINGS / NO-GO verdict gate). The procedure body (Steps 1–8 below) is unchanged from v1.0.0 — only the structured wrappers were added. Mirrors `bioinfo-skill-creator/preflight/skill-creator-preflight/SKILL.md`.
 
 ## Audience
@@ -201,6 +203,8 @@ Ask for the following, one at a time if not already provided. After each answer,
    After receiving path: read the first 3 lines and confirm sample count and column names. This is evidence item **E2** (manifest schema).
 
 2. **Metadata TSV** — path to sample metadata. Must contain at minimum a `sample-id` column. Ask the scientist to confirm the column used for grouping (e.g. `treatment`, `site`). Also check for `is_negative` column (evidence item **E4**).
+
+   > Soft warning (not a stop point, not a verdict input): ask whether occurrence cross-checking/publishing (`occurrence-crosscheck`) is planned for this run. If yes, verify the metadata TSV carries `decimalLatitude`, `decimalLongitude`, and `eventDate` per site. If missing, note it in the run summary as a sample-sheet gap to fix before the interpret → crosscheck handoff — do NOT add a stop point and do NOT downgrade the verdict.
 
 3. **IDTAXA model** — path to `.rds` file. If the scientist doesn't have one, explain:
    > "You need a pre-trained IDTAXA model for your reference database. If you have a reference FASTA with taxonomy headers, I can help you train a minimal model using `train_idtaxa_model.R`."

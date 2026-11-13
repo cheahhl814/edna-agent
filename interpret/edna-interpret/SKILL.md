@@ -1,8 +1,8 @@
 ---
 name: edna-interpret
 description: "Turn edna-agent pipeline outputs into a structured Markdown report and deep dive navigation plan, a plain-language narrative summary, and an interactive Q&A session. Refuses to interpret if upstream pipeline_state.json.completed_stages lacks 'classify'. Has 4 explicit ask-user stop points (SP1–SP4) that fire only when evidence is ambiguous. Triggers: 'interpret eDNA results', 'eDNA report', 'summarize eDNA run', 'eDNA Results section', 'eDNA diversity interpretation', 'eDNA differential abundance'."
-version: 1.3.3
-updated: "2026-11-11"
+version: 1.4.0
+updated: "2026-11-13"
 triggers:
   - "interpret eDNA results"
   - "eDNA report"
@@ -15,6 +15,8 @@ disable-model-invocation: true
 
 # edna-interpret
 
+> **v1.4.0.** Geocuration is removed from the pipeline; after `narrative.md`, occurrence-record validation is routed to the external `occurrence-crosscheck` skill (see the handoff section below). No other procedure changes.
+>
 > **v1.1.0.** Adds the canonical BettaMt structure (§0 Inputs/Outputs contract, §0.5 Ask-User Stop Points with Evidence + Recommend + Options, §Troubleshooting — Signature library). The procedure body (Steps 1–5 below) is unchanged from v1.0.0 — only the structured wrappers were added. The Step 2b anomaly check has been formalized as SP2.
 
 ## Audience
@@ -58,6 +60,15 @@ Use this skill when you need to:
 | `results/{run_id}/narrative.md`       | Markdown     | this skill | A 2–3 paragraph plain-language summary suitable for a manuscript Results-section draft (Step 4).                                                                                    |
 | (no on-disk output for Q&A)           | conversation | this skill | Q&A answers are given in-line; the scientist's questions are not persisted unless the user asks for a transcript (Step 5).                                                          |
 
+### Handoff — occurrence-crosscheck (optional, post-interpret)
+
+After `narrative.md` is written, if the user wants occurrence records validated/published, route to the external **`occurrence-crosscheck`** skill — do **not** attempt validation in this skill:
+
+1. Build the crosscheck input: a 4-column CSV (`scientificName, decimalLatitude, decimalLongitude, eventDate`) from the **sample sheet** (site metadata) joined to the rank-level observations table at the agreed rank. If a site has no GPS coordinates, that is a sample-sheet gap to fix at intake — not a runtime geocode step (the in-house geocuration tooling was removed in v1.4.0).
+2. Ask the user for the run **realm** (`marine` / `freshwater` / `terrestrial`) — per-run decision, not derivable from the marker; coastal/estuarine fish runs default to marine.
+3. Invoke `occurrence-crosscheck` (`crosscheck/` phase): its preflight hard-fails without `--user-email` (SP-4) — ask the user for their contact email; do not invent or default it.
+4. Outputs (`enriched.parquet`, `crosscheck_report.json`, `flagged_occurrences.tsv`, `review_queue.csv`) are the handoff artifacts to `occurrence-crosscheck/viz/` and `publish/`.
+
 ### Verdict gate enforcement
 
 Before reading any output, **read `pipeline_state.json.completed_stages`**. If `classify` is not present → SP1 fires (refuse to proceed; suggest running `run/edna-run` to completion).
@@ -78,7 +89,10 @@ This sub-skill has **4 stop points** (SP1–SP4). Each fires only when the evide
 
 | Trigger                                                                                                                                                                                                                              | Evidence check                                                   | Action                                                                                                                                                                                                                                                                                                                  |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| One or more anomalies found in Step 2b scan: zero ASVs, empty taxonomy, low confidence-filter retention, blank contamination, missing expected output files, very low read counts, no decontam filtering despite contaminated blanks | The report would mislead if these are silently buried in Caveats | Ask: "I detected `<N>` anomalies before writing the report (listed below). Pick: (A) **proceed** with interpretation, surfacing each anomaly prominently in Caveats (recommended), (B) **investigate first** — tell me which anomaly to dig into, (C) **abort** until upstream stages re-run\n\nAnomalies:\n- `<list>`" |
+| One or more anomalies found in Step 2b scan: zero ASVs, empty taxonomy, low confidence-filter retention, blank contamination, missing expected output files, very low read counts, no decontam filtering despite contaminated blanks | The report would mislead if these are silently buried in Caveats | Ask: "I detected `<N>` anomalies before writing the report (listed below). Pick: (A) **proceed** with interpretation, surfacing each anomaly prominently in Caveats (recommended), (B) **investigate first** — tell me which anomaly to dig into, (C) **abort** until upstream stages re-run
+
+Anomalies:
+- `<list>`" |
 
 **Auto-pick when**: zero anomalies detected. No ask.
 

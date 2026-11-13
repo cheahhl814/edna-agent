@@ -6,6 +6,5 @@
   "denoiser": "unoise3",
   "daa_level": "Genus",
   "correlation_level": "Genus",
-  "target_ranks": "Phylum,Family,Genus",
-  "geocurate": false
+  "target_ranks": "Phylum,Family,Genus"
 }

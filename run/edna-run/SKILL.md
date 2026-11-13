@@ -1,8 +1,8 @@
 ---
 name: edna-run
-description: "Execute the correct eDNA metabarcoding stage(s) for the run's marker preset — agent-driven: the agent constructs the stage's tool commands from the canonical recipe table, shows them to the scientist, executes them under the per-stage pixi environments, and updates pipeline_state.json only after verified success. Stages: qc (cutadapt + FastQC), denoise (NGmerge + VSEARCH UNOISE3 + decontam + negative-control filter, with an alternative DADA2 paired-end error-model path via params `denoiser`), classify (DECIPHER IDTAXA + confidence filter + agglomeration + optional geocuration), diversity (mafft + FastTree + alpha + beta/PERMANOVA + community typing), association (differential abundance + correlations). Refuses to execute when the upstream preflight/edna-intake verdict is NO-GO. Has 6 explicit ask-user stop points (SP1–SP6). Triggers: 'run eDNA pipeline', 'execute eDNA stages', 'continue eDNA run', 'eDNA QC stage', 'eDNA denoise', 'eDNA classify', 'eDNA diversity', 'eDNA association'."
-version: 1.3.3
-updated: "2026-11-11"
+description: "Execute the correct eDNA metabarcoding stage(s) for the run's marker preset — agent-driven: the agent constructs the stage's tool commands from the canonical recipe table, shows them to the scientist, executes them under the per-stage pixi environments, and updates pipeline_state.json only after verified success. Stages: qc (cutadapt + FastQC), denoise (NGmerge + VSEARCH UNOISE3 + decontam + negative-control filter, with an alternative DADA2 paired-end error-model path via params `denoiser`), classify (DECIPHER IDTAXA + confidence filter + agglomeration), diversity (mafft + FastTree + alpha + beta/PERMANOVA + community typing), association (differential abundance + correlations). Refuses to execute when the upstream preflight/edna-intake verdict is NO-GO. Has 6 explicit ask-user stop points (SP1–SP6). Triggers: 'run eDNA pipeline', 'execute eDNA stages', 'continue eDNA run', 'eDNA QC stage', 'eDNA denoise', 'eDNA classify', 'eDNA diversity', 'eDNA association'."
+version: 1.4.0
+updated: "2026-11-13"
 triggers:
   - "run eDNA pipeline"
   - "execute eDNA stages"
@@ -17,6 +17,8 @@ disable-model-invocation: true
 
 # edna-run
 
+> **v1.4.0.** **Geocuration removed.** The `geocurate` stage-description reference and the preset `geocurate`/`geocurate_buffer` keys are gone; record validation is outsourced to the external `occurrence-crosscheck` skill (`interpret → occurrence-crosscheck: validate → viz → publish`). SP1–SP6 numbering is unchanged — no stop point was removed.
+>
 > **v1.3.3.** Third SP5 classification option: **dada2-nb** — Wang-style k-mer naive-Bayes via `dada2::assignTaxonomy` (`bin/assign_taxonomy_dada2.R`; runs under ENV[denoise], reuses the consensus-BLAST reference inputs and idtaxa-style output contract), closing the TBCG2026 manual's third named annotation route (BLAST / VSEARCH / trained Naive Bayes). Plus an OPTIONAL **classification comparison mode** (`classification_comparison: true`, SP5): non-primary methods run into `taxonomy_alternatives/` and `bin/compare_classifications.R` quantifies rank-level pairwise agreement + per-ASV concordance. Rule carried over from the Maaslin2/ANCOM-BC precedent: the canonical taxonomy stays the PRIMARY method's — comparison side by side, never merged.
 >
 > **v1.3.2.** New **alternative DENOISE path**: DADA2 paired-end error model (`bin/denoise_dada2.R`, `bioconductor-dada2` in env/denoise) selected via params `denoiser: "dada2"` (default `"unoise3"`, new stop point SP6). Mirrors QIIME2 `dada2 denoise-paired`; emits the same feature-table/rep-seqs contract so decontam/classify run unchanged. Motivation: close the last structural divergence from QIIME2-based course workflows (TBCG2026) and enable direct A/B engine comparisons for the F10/F16 marker-sanity question.
@@ -38,6 +40,7 @@ disable-model-invocation: true
 
 - If there is **no `pipeline_state.json`** → invoke `preflight/edna-intake` first (SP1 refuses without it).
 - If the intake verdict is **`NO-GO`** → fix the failing evidence item first.
+- If you need **occurrence-record validation** (GBIF/OBIS/WoRMS/FishBase cross-check + environmental envelopes) → not this skill: route to the external `occurrence-crosscheck` skill after `interpret/edna-interpret` (`validate → viz → publish`); coordinates come from the sample sheet, not from any runtime geocode step.
 - If results are **complete and classified** and you only want reporting → `interpret/edna-interpret`.
 
 ## 0. Inputs / Outputs contract
@@ -467,6 +470,7 @@ If the marker reference is unsuited to the primer pair (e.g., reference amplicon
 
 | Signature in stderr / log | Likely cause | Suggested fix |
 | --- | --- | --- |
+| `pipeline_state.json` / merged params contain `geocurate` / `geocurate_buffer` (pre-v1.4.0 run) | stale keys from the removed in-house geocuration (v1.4.0) — SP2 schema-mismatch trigger | remove the keys (or ignore them) and continue — stale geocurate keys are dropped with a warning; the run is NOT invalidated; occurrence validation now routes to `occurrence-crosscheck` post-interpret |
 | `NGmerge: command not found` | denoise pixi env missing NGmerge (v1.1.5 regression, fixed v1.2.0) | `pixi add --manifest-path env/denoise/pixi.toml ngmerge` |
 | `cutadapt: adapter not found in reads` | wrong primer or orientation | check primer vs publication; loosen `--error-rate 0.15`; confirm marker via post-denoise sanity check |
 | `NGmerge: paired reads failed merge` | insert < 30 bp or SE data | check manifest read type |
