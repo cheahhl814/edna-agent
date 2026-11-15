@@ -44,34 +44,74 @@
   ],
   "tool_inventory": [
     {
-      "name": "python",
-      "version": ">=3.10",
-      "role": "Pinned conda dep"
+      "name": "cutadapt",
+      "version": "env/qc",
+      "role": "Adapter/quality trim (qc, database)"
     },
     {
-      "name": "julia",
-      "version": ">=1.10",
-      "role": "Pinned conda dep"
+      "name": "fastqc",
+      "version": "env/qc",
+      "role": "Read QC reports (qc)"
     },
     {
-      "name": "nextflow",
-      "version": ">=23.10.0",
-      "role": "Pinned conda dep"
+      "name": "NGmerge",
+      "version": "env/denoise",
+      "role": "Paired-end merger (denoise)"
     },
     {
-      "name": "pandas",
-      "version": ">=2.0",
-      "role": "Pinned conda dep"
+      "name": "vsearch",
+      "version": "env/denoise",
+      "role": "Dereplication + UNOISE3 + consensus-BLAST (denoise)"
     },
     {
-      "name": "pyyaml",
-      "version": ">=6.0",
-      "role": "Pinned conda dep"
+      "name": "seqtk",
+      "version": "env/classification",
+      "role": "FASTA/Q toolkit (classification)"
     },
     {
-      "name": "jsonschema",
-      "version": ">=4.0",
-      "role": "Pinned conda dep"
+      "name": "seqkit",
+      "version": "env/database",
+      "role": "Sequence stats/ manipulation (reference-db)"
+    },
+    {
+      "name": "mafft",
+      "version": "env/diversity",
+      "role": "Multiple alignment (diversity)"
+    },
+    {
+      "name": "fasttree",
+      "version": "env/diversity",
+      "role": "Approximate tree building (diversity)"
+    },
+    {
+      "name": "dada2",
+      "version": "env/denoise",
+      "role": "R/Bioc error-model denoise (alt DENOISE engine)"
+    },
+    {
+      "name": "decontam",
+      "version": "env/decontam",
+      "role": "Contaminant identification (Julia wrapper bin/decontam.jl)"
+    },
+    {
+      "name": "decipher",
+      "version": "env/classification",
+      "role": "R/Bioc IDTAXA training + classification"
+    },
+    {
+      "name": "ancombc",
+      "version": "env/association",
+      "role": "R/Bioc differential abundance (alt DAA)"
+    },
+    {
+      "name": "vegan",
+      "version": "env/diversity",
+      "role": "R community ecology (rarefy, diversities)"
+    },
+    {
+      "name": "mia",
+      "version": "env/diversity",
+      "role": "R/Bioc microbiome analysis (agglomerate etc.)"
     }
   ],
   "skill_title": "nf-edna",

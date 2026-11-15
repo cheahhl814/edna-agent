@@ -26,19 +26,7 @@ disable-model-invocation: true
 
 # Meta-Skill: edna-agent
 
-> **v1.4.0.** **Geocuration removed; record validation outsourced to `occurrence-crosscheck`.** The in-house site-coordinate curation (`bin/geocurate_fetch.R`, `bin/geocurate_check.R`, `env/geocuration/`, `geocurate`/`geocurate_buffer` preset keys) is deleted — occurrence validation is one pipeline now: after `interpret/edna-interpret`, route to the external `occurrence-crosscheck` skill (`validate → viz → publish`), which cross-checks records against GBIF/OBIS/WoRMS/FishBase + environmental envelopes realm-aware. Coordinates come from the sample sheet; no runtime geocode step. Note: stale `geocurate` keys left in an old `pipeline_state.json` fire the SP2 schema-mismatch stop point with a warning ("stale geocurate keys are removed, run not invalidated") — see the SP2 signature-library entry. Maps and the `occurrence-crosscheck` handoff row in the composability table reflect this target state.
->
-> **v1.3.3.** Third SP5 classification option: **dada2-nb** (Wang-style k-mer naive-Bayes via `dada2::assignTaxonomy`, `bin/assign_taxonomy_dada2.R` — runs under `env/denoise`, same reference inputs and idtaxa-style output contract as consensus-BLAST), closing the TBCG2026 manual's third named annotation route (BLAST / VSEARCH / trained Naive Bayes). New OPTIONAL **classification comparison mode** (`classification_comparison: true`): the primary method keeps the canonical outputs while non-primary methods run into `taxonomy_alternatives/` and `bin/compare_classifications.R` reports rank-level agreement + per-ASV concordance — side by side, never merged (Maaslin2/ANCOM-BC precedent).
->
-> **v1.3.2.** New **alternative DENOISE engine**: DADA2 paired-end error model (`bin/denoise_dada2.R`, `bioconductor-dada2` in `env/denoise`), selected by params `denoiser: "dada2"` (default `"unoise3"`; new run-skill stop point **SP6**). Mirrors QIIME2 `dada2 denoise-paired` (filterAndTrim → learnErrors → dada paired → mergePairs → consensus chimera removal) AND `denoise-single` (`--mode single` for single-end reads, battle-tested live on the Tele01 SE dataset: 504 ASVs/17 samples); emits the same feature-table / rep-seqs contract, so decontam → classify → downstream is unchanged. Round-5 findings F25–F28 (empty-sample guard, table transpose + per-sample stats orientation, derep casing) encoded in the script and signature library. Closes the last structural divergence from QIIME2-course workflows (TBCG2026 audit, 2026-11-11); the paired UNOISE3-vs-DADA2 A/B on TBCG2026 is deferred (14 GB host is RAM-bound — run the DADA2 path single-core there). Marker presets now ship `"denoiser"` (default `"unoise3"`).
->
-> **v1.3.0.** Gap-fill from the TBCG2026 QIIME2-course comparison (2026-11-06): (1) **rarefaction curves** (`bin/rarefaction.R`, diversity stage — mirrors `qiime diversity alpha-rarefaction`); (2) **Pielou evenness** added to `bin/alpha_diversity.R` metrics; (3) **consensus-BLAST classify path** (`bin/consensus_blast_taxonomy.R` + vsearch, SP5 — no trained IDTAXA model needed; mirrors `classify-consensus-blast` vs labelled references like Mitohelper); (4) **ANCOM-BC** as an alternative DAA (`bin/ancombc_differential.R`, `daa_method: "ancombc"`); (5) **edna-visualize stages 4–5** — grouped alpha-boxplots (`plot_alpha_boxplot.R`) and PCoA ordination + PERMANOVA (`plot_ordination.R`), with the previously-phantom `env/visualization/` now materialized at the skill root.
->
-> **v1.2.0.** Agent-driven only: the `runners/nextflow-runner/` (Nextflow DSL2 pipeline) has been **removed**. Every stage is executed by the agent running the stage tools directly under per-stage pixi environments (`env/{stage}/pixi.toml`), following the bash recipes in `run/edna-run/SKILL.md`. Rationale (2026-10-07/08 real-data battle-test, `battle-test-report.md`): Nextflow 26.04.6 rejects the `def`-function config grammar (`Unexpected input: '('`) and rejects multiple `-params-file` flags, and the wrapped tool recipes themselves were error-free once executed directly — the runner added failure surface without adding correctness. Other v1.2.0 fixes carried into this version: `env/denoise` ships NGmerge; `r-rbiom` pinned 2.2.1 across classification/diversity/association envs; DAA/correlation/typing rank matching made robust; marker presets hoisted to `params/` at the skill root. **Renamed from nf-edna → edna-agent** (the `nf-` prefix marked the Nextflow era, and the mirror rename `nf-phylogenetics-agent → phylogenetics-agent` sets the convention).
->
-> **v1.1.x history** (nextflow-runner era): v1.1.5 biodb-fetch wiring; v1.1.4 runners/nextflow-runner restructure (removed in v1.2.0); v1.1.3 reference-db sub-skill; v1.1.2 idtaxa-training + edna-visualize sub-skills; v1.1.1 DECIPHER RDX3/XZ model loading; v1.1.0 canonical BettaMt structure.
->
-> **This SKILL.md is a router.** It does not duplicate logic from the sub-skills. Its job is to ask: *what stage is the user at, and which sub-skill should they invoke next?*
+> **This SKILL.md is a router. It does not duplicate logic from the sub-skills. Its job is to ask: *what stage is the user at, and which sub-skill should they invoke next?*
 
 ## Audience
 
@@ -96,7 +84,7 @@ If auto-detection is ambiguous, ask the user one short question (see **SP0** bel
 
 ### 0.4 Execution model — agent-driven
 
-As of v1.2.0 there is **no workflow engine**. The `run/edna-run` sub-skill contains the canonical bash recipe for every stage process (mirroring the tool invocations validated in the 2026-08-19 and 2026-10-07 real runs). The agent:
+There is **no workflow engine**. The `run/edna-run` sub-skill contains the canonical bash recipe for every stage process (mirroring the tool invocations validated in the real-data battle-test runs). The agent:
 
 1. Reads `pipeline_state.json` (SP1 verdict gate).
 2. Determines the next stage and constructs the concrete command chain from the recipe table.
