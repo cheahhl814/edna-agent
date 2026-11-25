@@ -112,7 +112,7 @@ def main() -> int:
                  "agglomerate_data.R", "mafft", "fasttree", "root_tree.R", "alpha_diversity.R",
                  "beta_diversity.R", "community_typing.R", "differential_abundance.R",
                  "correlation_analysis.R", "consensus_blast_taxonomy.R",
-                 "ancombc_differential.R", "rarefaction.R"):
+                 "ancombc_differential.R", "rarefaction.R", "merge_identical_asvs.py"):
         check(f"run recipes cover {tool}", tool in run_text)
     check("run recipes wire the julia instantiate workaround",
           "Pkg.instantiate()" in run_text)
@@ -135,7 +135,7 @@ def main() -> int:
                    "bin/agglomerate_data.R", "bin/alpha_diversity.R", "bin/beta_diversity.R",
                    "bin/community_typing.R", "bin/differential_abundance.R",
                    "bin/correlation_analysis.R", "bin/root_tree.R",
-                   "bin/consensus_blast_taxonomy.R", "bin/ancombc_differential.R",
+                   "bin/consensus_blast_taxonomy.R", "bin/ancombc_differential.R", "bin/merge_identical_asvs.py",
                    "bin/rarefaction.R",
                    "bin/summarise_run.py", "bin/skill-update-check.py"):
         check(f"{script} exists", (ROOT / script).exists())

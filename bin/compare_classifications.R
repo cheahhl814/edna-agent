@@ -90,13 +90,16 @@ fwrite(agreement_df, file = args$output_agreement, sep = "\t", quote = FALSE)
 # --- Per-ASV concordance profile ------------------------------------------------
 n_methods <- length(tables)
 con_rows <- list()
+# Row index of each shared ASV in each method's table. Look rows up by position: the tables are
+# data.frames with default integer row names, so tables[[nm]][ids_all, rc] (character index) returns NA.
+row_idx <- lapply(tables, function(dt) match(ids_all, dt$SequenceID))
 for (rc in rank_cols) {
-    assigned <- sapply(names(tables), function(nm) !is_unassigned(tables[[nm]][ids_all, rc]))
+    assigned <- sapply(names(tables), function(nm) !is_unassigned(tables[[nm]][[rc]][row_idx[[nm]]]))
     counts   <- rowSums(assigned)
     # full concordance: every method that assigned this ASV at this rank agrees
     agree_vec <- rep(NA_real_, length(ids_all))
     for (i in seq_along(ids_all)) {
-        vals <- vapply(names(tables), function(nm) tables[[nm]][ids_all[i], rc], "")
+        vals <- vapply(names(tables), function(nm) tables[[nm]][[rc]][row_idx[[nm]][i]], "")
         vals <- vals[!is_unassigned(vals)]
         if (length(vals) >= 2) agree_vec[i] <- as.integer(length(unique(vals)) == 1)
     }

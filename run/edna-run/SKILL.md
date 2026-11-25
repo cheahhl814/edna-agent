@@ -181,8 +181,17 @@ ENV[denoise] Rscript bin/merge_tables.R --input_files <all *.table.tsv> --output
 awk 'BEGIN{FS=OFS="\t"} {gsub(/:/,"_",$1); print}' feature-table.tsv > feature-table_renamed.tsv
 cat <all *.sequences.fasta> > rep-seqs.fna; sed '/^>/s/:/_/g' rep-seqs.fna > rep-seqs_renamed.fna
 
-ENV[decontam] julia bin/decontam.jl --feature_table feature-table_renamed.tsv \
-  --metadata ${P.metadata} --rep_seqs rep-seqs_renamed.fna \
+# MANDATORY cross-sample merge by sequence (UNOISE3 path). vsearch centroid IDs are READ HEADERS, and
+# merge_tables.R joins on that ID, so the same sequence found in two samples gets two different IDs and is
+# never merged: without this step every ASV occurs in exactly ONE sample, which breaks decontam's prevalence
+# test, beta diversity/PERMANOVA/community typing and DAA (real data: 21,897 per-sample "ASVs" were 8,965
+# distinct sequences). Exact, case-insensitive sequence identity; counts summed; ID = ASV_<sha1[:12]>; per-sample
+# read totals asserted unchanged. (DADA2 path: ids are already sequence-level, skip this step.)
+python3 bin/merge_identical_asvs.py --feature_table feature-table_renamed.tsv --rep_seqs rep-seqs_renamed.fna \
+  --out_table feature-table_merged.tsv --out_rep_seqs rep-seqs_merged.fna --out_map asv_merge_map.tsv
+
+ENV[decontam] julia bin/decontam.jl --feature_table feature-table_merged.tsv \
+  --metadata ${P.metadata} --rep_seqs rep-seqs_merged.fna \
   --output_cleaned_table asv_table/decontam_asv_table.tsv --output_cleaned_rep_seqs asv_table/decontam_rep_seqs.fna \
   --output_contaminants_summary asv_table/decontam_summary.tsv \
   --threshold ${P.decontam_threshold} --neg_control_column ${P.neg_col}
@@ -419,7 +428,7 @@ Run each stage's commands (Bash tool). After each stage, verify outputs BEFORE u
 | Stage | Verify |
 | --- | --- |
 | qc | every sample dir has `*_R1/_R2.trimmed.fastq.gz` non-empty; record cutadapt retention % |
-| denoise | `asv_table/filtered_asv_table.tsv` + `filtered_rep_seqs.fna` exist non-trivial |
+| denoise | `asv_table/filtered_asv_table.tsv` + `filtered_rep_seqs.fna` exist non-trivial; AND a non-trivial share of ASVs occur in >1 sample (if EVERY ASV is in exactly one sample, the `merge_identical_asvs.py` cross-sample merge was skipped — redo it before decontam) |
 | classify | `taxonomy/agglomerated_data/asv_counts.tsv` has ≥ 1 sample column |
 | diversity | `diversity/alpha/alpha_diversity_metrics.tsv` + `diversity/beta/permanova_results.tsv` exist |
 | association | `association/differential_abundance/differential_abundance_results.tsv` exists (or `ancombc_results.tsv` when `daa_method: "ancombc"`) |
@@ -478,6 +487,7 @@ If the marker reference is unsuited to the primer pair (e.g., reference amplicon
 | `biom convert: file is empty / can't be parsed` | sample had 0 ASVs after UNOISE3 | expected — the `|| printf header` fallback writes a header-only TSV; merge_tables.R skips it with a warning |
 | `Package ArgParse is required but does not seem to be installed` (Julia) | decontam env not instantiated | `pixi run --manifest-path env/decontam/pixi.toml julia -e 'using Pkg; Pkg.instantiate()'` |
 | `parse(Bool, "FALSE")` style Julia failure | QIIME2 TRUE/FALSE strings in Bool columns | v1.2.0 filter_table.jl handles case-insensitively (fix verified 2026-08-19) |
+| Every ASV occurs in exactly one sample; ASV count ≫ distinct sequences; decontam flags nothing; beta diversity looks degenerate | UNOISE3 centroid ids are read headers so `merge_tables.R` never merges identical sequences across samples | run `bin/merge_identical_asvs.py` on `feature-table_renamed.tsv` + `rep-seqs_renamed.fna`, then redo decontam → filter → classify on the merged outputs (denoise recipe) |
 | `Incompatible join types: logical vs character` (R) | empty per-sample table merged | v1.2.0 merge_tables.R skips empty tables (verified) |
 | `object 'unifrac' is not exported by 'namespace:rbiom'` | mia 1.18 + rbiom 3.x incompatibility | pin `r-rbiom ==2.2.1` in env/{classification,diversity,association}; keep the opportunistic mia-load guards in the R scripts |
 | `could not find function "TreeSummarizedExperiment"` | mia loads via requireNamespace but TSE attach skipped | explicit `library(TreeSummarizedExperiment)` (present in v1.2.0 scripts) |

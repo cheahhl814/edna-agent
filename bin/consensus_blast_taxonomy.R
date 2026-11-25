@@ -19,7 +19,7 @@ suppressPackageStartupMessages({
 RANK_CODES <- c(k = "superkingdom", d = "superkingdom",  # k__ (RDP) and d__ (Mitohelper/NCBI) both mean superkingdom
                 p = "phylum", c = "class", o = "order",
                 f = "family", g = "genus", s = "species")
-RANK_ORDER <- unname(RANK_CODES)
+RANK_ORDER <- unique(unname(RANK_CODES))  # k and d both map to superkingdom: de-duplicate (a duplicate produced a doubled superkingdom column)
 
 parser <- ArgumentParser(description = 'Consensus taxonomic assignment from vsearch blast6out against a labelled reference database.')
 parser$add_argument('--blast6out', type='character', required=TRUE,
@@ -56,6 +56,12 @@ if (ncol(ref) < 2) {
     stop("Reference taxonomy needs >= 2 columns (ID + lineage, or ID + rank columns).")
 }
 names(ref)[1] <- "ref_id"
+# Accept "domain" (NCBI/IDTAXA-style lineage tables) as an alias of superkingdom. "kingdom" is NOT aliased:
+# NCBI kingdom (Metazoa, Fungi, ...) is a different rank from superkingdom (Eukaryota, Bacteria, ...).
+if (!("superkingdom" %in% tolower(names(ref)[-1]))) {
+    dom <- which(tolower(names(ref)) == "domain" & seq_along(names(ref)) > 1)
+    if (length(dom) == 1L) names(ref)[dom] <- "superkingdom"
+}
 
 ref_map <- list()
 if (sum(grepl(";", as.character(ref[[2]]))) > 0) {
@@ -66,7 +72,7 @@ if (sum(grepl(";", as.character(ref[[2]]))) > 0) {
         for (part in parts) {
             code <- substr(part, 1, 1); val <- substr(part, 4, nchar(part))  # after "k__"
             val <- trimws(val)
-            if (code %in% names(RANK_CODES) && val != "" && !grepl("^unassigned$", val)) {
+            if (code %in% names(RANK_CODES) && !is.na(val) && val != "" && val != "NA" && !grepl("^unassigned$", val)) {
                 entry[[RANK_CODES[[code]]]] <- val
             }
         }
@@ -85,13 +91,21 @@ if (sum(grepl(";", as.character(ref[[2]]))) > 0) {
             idx <- which(tolower(names(ref)[-1]) == rc)
             if (length(idx) == 1L) {
                 val <- trimws(as.character(ref[i, idx + 1]))
-                if (val != "" && !grepl("^unassigned$", val)) entry[[rc]] <- val
+                # NA / "NA" / "" / unassigned all mean "no value at this rank"
+                if (!is.na(val) && val != "" && val != "NA" && !grepl("^unassigned$", val)) entry[[rc]] <- val
             }
         }
         ref_map[[as.character(ref[i, 1])]] <- entry
     }
 }
 message(paste("Parsed", length(ref_map), "reference taxonomy entries."))
+n_with_rank <- sum(vapply(ref_map, function(e) length(e) > 0, logical(1)))
+message(paste(n_with_rank, "of them carry at least one assigned rank."))
+if (n_with_rank == 0) {
+    stop("The reference taxonomy parsed but NO record has any assigned rank (all rank columns empty/NA/unassigned, ",
+         "or rank column names not recognised: need ", paste(RANK_ORDER, collapse = ","), " or 'domain'). ",
+         "Rebuild it, e.g. from the lineage headers of the IDTAXA training FASTA.")
+}
 
 unmapped <- setdiff(unique(hits$sseqid), names(ref_map))
 if (length(unmapped) > 0) {
