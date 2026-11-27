@@ -33,8 +33,8 @@ dna_seqs <- readDNAStringSet(args$input_ncbi_fasta)
 original_headers <- names(dna_seqs)
 
 # --- Extract accession IDs from headers ---
-# Handles: "AF004969.1 Description..." → "AF004969.1"
-accession_ids <- str_extract(original_headers, "^[A-Z]{1,2}[0-9]{5,9}(\\.?[0-9]+)?")
+# Handles: "AF004969.1 Description..." → "AF004969.1"; RefSeq "NC_012345.1" (underscore); WGS-style 4-6 letter prefixes
+accession_ids <- str_extract(original_headers, "^[A-Z]{1,6}_?[0-9]{5,12}(\\.?[0-9]+)?")
 
 valid <- !is.na(accession_ids) & accession_ids != ""
 if (any(!valid)) {
