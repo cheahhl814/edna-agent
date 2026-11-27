@@ -147,6 +147,17 @@ if (mode == "paired") {
 
   mergers <- mergePairs(ddF, derepFs, ddR, derepRs,
                         minOverlap = args$min_overlap, maxMismatch = args$max_mismatch)
+
+  # PAIRED-MODE FIX: the paired branch used to stop here and never built `seqtab` or
+  # `merged` (only the SE branch did), so paired runs crashed with 'object seqtab not
+  # found' at removeBimeraDenovo, AFTER the slow filter/learnErrors/dada steps.
+  # mergePairs() returns a bare data.frame (not a list) when there is ONE sample —
+  # normalize to a named list, same idiom as ddF_list/ddR_list above.
+  if (is.data.frame(mergers)) mergers <- list(mergers)
+  names(mergers) <- sample_ids
+  merged <- sapply(mergers, function(x) sum(getUniques(x)))
+  names(merged) <- sample_ids
+  seqtab <- makeSequenceTable(mergers)
 } else {
   names(filtFs) <- sample_ids
   filt_args <- list(fnFs, filtFs,

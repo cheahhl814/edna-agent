@@ -106,6 +106,10 @@ def main() -> int:
                   fm.get("version") == VERSION, str(fm.get("version")))
 
     print("== Stage recipe coverage (agent-driven execution) ==")
+    dada2_text = (ROOT / "bin/denoise_dada2.R").read_text(errors="ignore")
+    check("denoise_dada2.R paired branch builds seqtab + merged from mergers (regression: 'object seqtab not found')",
+          "makeSequenceTable(mergers)" in dada2_text and "merged <- sapply(mergers" in dada2_text
+          and "is.data.frame(mergers)" in dada2_text)
     run_text = (ROOT / "run/edna-run/SKILL.md").read_text(errors="ignore")
     for tool in ("cutadapt", "fastqc", "NGmerge", "vsearch", "biom convert", "merge_tables.R",
                  "decontam.jl", "filter_table.jl", "idtaxa_rds.R", "filter_idtaxa_by_confidence.jl",
