@@ -110,6 +110,11 @@ def main() -> int:
     check("denoise_dada2.R paired branch builds seqtab + merged from mergers (regression: 'object seqtab not found')",
           "makeSequenceTable(mergers)" in dada2_text and "merged <- sapply(mergers" in dada2_text
           and "is.data.frame(mergers)" in dada2_text)
+    nb_text = (ROOT / "bin/assign_taxonomy_dada2.R").read_text(errors="ignore")
+    check("assign_taxonomy_dada2.R writes taxonomy-only training headers (regression: id prefix collapsed bootstraps)",
+          'paste0(">", ref_df$tax[i])' in nb_text and 'ref_df$id[i], " "' not in nb_text)
+    check("assign_taxonomy_dada2.R falls back to full-header ids and defaults tryRC on",
+          "full_hit" in nb_text and "tryRC = !args$no_try_rc" in nb_text)
     run_text = (ROOT / "run/edna-run/SKILL.md").read_text(errors="ignore")
     for tool in ("cutadapt", "fastqc", "NGmerge", "vsearch", "biom convert", "merge_tables.R",
                  "decontam.jl", "filter_table.jl", "idtaxa_rds.R", "filter_idtaxa_by_confidence.jl",

@@ -45,7 +45,9 @@ parser$add_argument('--output_confidence', type='character', required=TRUE,
 parser$add_argument('--min_boot', type='double', default=0,
                     help='assignTaxonomy minBoot; default 0 — the confidence threshold is applied DOWNSTREAM by filter_idtaxa_by_confidence.jl, keeping the comparison methods consistent.')
 parser$add_argument('--try_rc', action='store_true', default=FALSE,
-                    help='Also try reverse-complement assignment (slower; use when primer orientation may vary).')
+                    help='Deprecated no-op: reverse-complement assignment (tryRC) is now ON by default; kept so old recipes still parse.')
+parser$add_argument('--no_try_rc', action='store_true', default=FALSE,
+                    help='Disable reverse-complement assignment (faster; only when ALL queries are known to be in reference orientation). Default OFF-switch: tryRC=TRUE, because a forward-only search silently changes assignments for reverse-oriented ASVs.')
 parser$add_argument('--unassigned_label', type='character', default='NA',
                     help='Value written for ranks below the minBoot threshold.')
 parser$add_argument('--max_records', type='integer', default=0,
@@ -86,8 +88,13 @@ tax_lookup[is.na(tax_lookup)] <- ""
 lines <- readLines(args$reference_fasta, warn = FALSE)
 lines <- lines[nzchar(lines)]
 is_h  <- startsWith(lines, ">")
-ids   <- sub("^>", "", lines[is_h])
-ids   <- vapply(strsplit(ids, "\\s"), function(x) x[[1]], "")   # drop header extras after the id
+hdrs  <- sub("^>", "", lines[is_h])
+ids   <- vapply(strsplit(hdrs, "\\s"), function(x) x[[1]], "")   # first token = id ...
+# ... unless the first token has no taxonomy entry but the FULL header does (dada2-convention
+# references: the header IS the lineage/name and may contain spaces, e.g. species binomials)
+full_hit <- !(ids %in% names(tax_lookup)) & (trimws(hdrs) %in% names(tax_lookup))
+ids[full_hit] <- trimws(hdrs)[full_hit]
+if (any(full_hit)) message(paste(sum(full_hit), "reference header(s) matched the taxonomy table only as a FULL header (ids with spaces)."))
 grp   <- cumsum(is_h)
 seqs  <- as.character(tapply(lines[!is_h], grp[!is_h], function(s) paste(s, collapse = "")))
 ref_df <- data.frame(id = ids[unique(grp[!is_h])], seq = seqs, stringsAsFactors = FALSE)
@@ -95,7 +102,9 @@ if (nrow(ref_df) == 0) stop("reference_fasta is empty or unparsable.")
 
 missing_tax <- setdiff(ref_df$id, names(tax_lookup))
 if (length(missing_tax) > 0) {
-    warning(paste(length(missing_tax), "reference FASTA ids lack a taxonomy entry — excluded from training."))
+    n_miss <- sum(ref_df$id %in% missing_tax)   # records, not unique ids
+    message(sprintf("WARNING: %d of %d reference records (%.1f%%) lack a taxonomy entry and are EXCLUDED from training (e.g. '%s'). Check that the FASTA header id matches column 1 of the taxonomy TSV.",
+                    n_miss, nrow(ref_df), 100 * n_miss / nrow(ref_df), missing_tax[1]))
     ref_df <- ref_df[ref_df$id %in% names(tax_lookup), ]
 }
 ref_df$tax <- vapply(ref_df$id, function(x) gsub("^d__", "k__", tax_lookup[[x]]), "")
@@ -131,7 +140,10 @@ con <- file(train_file, open = "wt")
 # sequences after pairs every dada2-parsed record with the NEXT header line as
 # its 'sequence', collapsing the whole reference set onto one degenerate record
 for (i in seq_len(nrow(ref_df))) {
-  writeLines(paste0(">", ref_df$id[i], " ", ref_df$tax[i]), con)
+  # TAXONOMY-ONLY header: dada2 treats the whole header as the lineage. A unique id prefix
+  # makes every reference its own top-level taxon and collapses the bootstrap to a constant
+  # (A/B verified 2026-11-27). The id is only used above to look the lineage up.
+  writeLines(paste0(">", ref_df$tax[i]), con)
   writeLines(as.character(ref_df$seq[i]), con)
 }
 close(con)
@@ -163,7 +175,7 @@ remap_ids <- function(m) {
 }
 
 taxres <- assignTaxonomy(args$query_seqs, train_file, minBoot = args$min_boot,
-                         tryRC = args$try_rc, outputBootstraps = TRUE,
+                         tryRC = !args$no_try_rc, outputBootstraps = TRUE,
                          taxLevels = tax_levels, multithread = MT, verbose = TRUE)
 rownames(taxres$tax) <- remap_ids(taxres$tax)
 rownames(taxres$boot) <- remap_ids(taxres$boot)
