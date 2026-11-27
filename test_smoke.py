@@ -106,6 +106,11 @@ def main() -> int:
                   fm.get("version") == VERSION, str(fm.get("version")))
 
     print("== Stage recipe coverage (agent-driven execution) ==")
+    nb_text = (ROOT / "bin/assign_taxonomy_dada2.R").read_text(errors="ignore")
+    check("assign_taxonomy_dada2.R writes taxonomy-only training headers (regression: id prefix collapsed bootstraps)",
+          'paste0(">", ref_df$tax[i])' in nb_text and 'ref_df$id[i], " "' not in nb_text)
+    check("assign_taxonomy_dada2.R falls back to full-header ids and defaults tryRC on",
+          "full_hit" in nb_text and "tryRC = !args$no_try_rc" in nb_text)
     run_text = (ROOT / "run/edna-run/SKILL.md").read_text(errors="ignore")
     for tool in ("cutadapt", "fastqc", "NGmerge", "vsearch", "biom convert", "merge_tables.R",
                  "decontam.jl", "filter_table.jl", "idtaxa_rds.R", "filter_idtaxa_by_confidence.jl",
